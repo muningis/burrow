@@ -38,7 +38,7 @@ export interface IntentInferred {
   cwd?: string;
   systemPrompt: boolean;
   systemPromptLines?: number;
-  git?: { branchPattern?: string; commitStyle?: string; defaultBranch: string };
+  git?: { branchPattern?: string; commitStyle?: CommitStyle; defaultBranch: string };
   intent?: {
     name: string;
     type: string;

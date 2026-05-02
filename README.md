@@ -187,7 +187,7 @@ new Burrow({
 
 When `git` is configured, Burrow injects a **Git Workflow** section into the agent's system prompt automatically. The agent will:
 
-1. Create a branch following `branchPattern` before touching any files — `<slug>` is replaced with a short kebab-case description of the task.
+1. Create a branch before touching any files. If `branchPattern` is set, `<slug>` is replaced with a short kebab-case description of the task (e.g. `feature/add-login-page`). If `branchPattern` is omitted, the slug is used directly as the branch name (e.g. `add-login-page`).
 2. Write commits in the requested style (`conventional` → `feat:`, `fix:`, etc.).
 3. Open a pull request with `gh pr create` after the task is complete.
 

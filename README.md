@@ -214,7 +214,7 @@ sandbox: docker({
 }),
 ```
 
-- **`ssh: true`** mounts the host's SSH agent socket and `~/.ssh/known_hosts` into the container so `git@github.com:…` pushes succeed using your existing host keys. On macOS this uses Docker Desktop's `/run/host-services/ssh-auth.sock`; on Linux it uses `$SSH_AUTH_SOCK`. See [docs/configuration.md#ssh](docs/configuration.md#ssh) for the full option list.
+- **`ssh: true`** mounts the host's SSH agent socket and `~/.ssh/known_hosts` into the container so `git@github.com:…` pushes succeed using your existing host keys. On macOS it prefers Docker Desktop's `/run/host-services/ssh-auth.sock` when present, and falls back to `$SSH_AUTH_SOCK` (Colima and other runtimes). On Linux it uses `$SSH_AUTH_SOCK`. See [docs/configuration.md#ssh](docs/configuration.md#ssh) for the full option list.
 - **`GH_TOKEN`** lets `gh` authenticate without a stored config. Alternatively, mount your `~/.config/gh` directory so `gh` reuses your local login.
 
 Forwarding the SSH agent gives the container access to every key currently loaded in your agent — only enable it for sandboxes whose code you trust.

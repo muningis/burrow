@@ -116,7 +116,7 @@ ssh: {
 
 | Field           | Type                  | Default            | Description                                                                                                                           |
 | --------------- | --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent`         | `boolean`             | `true`             | Forward the host's SSH agent socket and set `SSH_AUTH_SOCK` in the container. On macOS uses Docker Desktop's `/run/host-services/ssh-auth.sock`; on Linux uses the host's `$SSH_AUTH_SOCK`. |
+| `agent`         | `boolean`             | `true`             | Forward the host's SSH agent socket and set `SSH_AUTH_SOCK` in the container. On macOS tries Docker Desktop's `/run/host-services/ssh-auth.sock` first, then falls back to `$SSH_AUTH_SOCK` (Colima, Rancher Desktop, etc.). On Linux uses `$SSH_AUTH_SOCK`. |
 | `knownHosts`    | `boolean \| string`   | `true`             | Mount `<hostDir>/known_hosts` read-only into `<containerHome>/.ssh/known_hosts`. Pass a path to use a custom file.                    |
 | `config`        | `boolean \| string`   | `false`            | Mount `<hostDir>/config` read-only. Enable if your SSH config drives host or identity selection.                                       |
 | `hostDir`       | `string`              | `"~/.ssh"`         | Source directory on the host for `knownHosts` / `config`.                                                                             |

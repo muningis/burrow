@@ -80,11 +80,11 @@ interface SshRuntime {
 }
 
 function sshAgentSocket(): { source: string; target: string } | null {
-  if (process.platform === "darwin") {
+  if (process.platform === "darwin" && existsSync(DOCKER_DESKTOP_SSH_SOCK)) {
     return { source: DOCKER_DESKTOP_SSH_SOCK, target: DOCKER_DESKTOP_SSH_SOCK };
   }
   const sock = process.env.SSH_AUTH_SOCK;
-  if (!sock) return null;
+  if (!sock || !existsSync(sock)) return null;
   return { source: sock, target: "/run/ssh-agent.sock" };
 }
 
@@ -98,7 +98,7 @@ function sshArgs(ssh: SshConfig): SshRuntime {
     const sock = sshAgentSocket();
     if (!sock) {
       throw new Error(
-        "ssh.agent is enabled but SSH_AUTH_SOCK is not set on the host. Start an ssh-agent or set ssh.agent: false."
+        "ssh.agent is enabled but no SSH agent socket was found (tried Docker Desktop socket and SSH_AUTH_SOCK). Start an ssh-agent or set ssh.agent: false."
       );
     }
     args.push(

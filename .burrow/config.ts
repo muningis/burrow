@@ -14,4 +14,8 @@ export default new Burrow({
   }),
   cwd: join(import.meta.dir, ".."),
   systemPrompt,
+  git: {
+    branchPattern: "feature/<slug>",
+    commitStyle: "conventional",
+  },
 });

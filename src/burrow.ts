@@ -8,6 +8,15 @@ import {
   type ResolvedIntent,
 } from "./intents.js";
 
+export type CommitStyle = "conventional" | "custom";
+
+export interface GitConfig {
+  branchPattern?: string;
+  commitStyle?: CommitStyle;
+  commitTemplate?: string;
+  defaultBranch?: string;
+}
+
 export interface BurrowConfig {
   agent: AgentProvider;
   sandbox: SandboxProvider;
@@ -15,6 +24,7 @@ export interface BurrowConfig {
   burrowDir?: string;
   systemPrompt?: string;
   hooks?: Record<string, unknown>;
+  git?: GitConfig;
 }
 
 export interface IntentResourceSummary {
@@ -28,6 +38,7 @@ export interface IntentInferred {
   cwd?: string;
   systemPrompt: boolean;
   systemPromptLines?: number;
+  git?: { branchPattern?: string; commitStyle?: string; defaultBranch?: string };
   intent?: {
     name: string;
     type: string;
@@ -38,6 +49,41 @@ export interface IntentInferred {
   skills: IntentResourceSummary[];
   context: IntentResourceSummary[];
   docs: IntentResourceSummary[];
+}
+
+function composeGitSection(git: GitConfig): string {
+  const lines: string[] = ["# Git Workflow"];
+
+  if (git.branchPattern) {
+    const example = git.branchPattern.replace("<slug>", "your-task-slug");
+    lines.push(
+      "",
+      "Before making any changes, create a branch:",
+      `  git checkout -b ${example}`,
+      `Replace the slug with a short kebab-case description of the task.`,
+      `Branch pattern: \`${git.branchPattern}\``
+    );
+  }
+
+  if (git.commitStyle === "conventional") {
+    lines.push(
+      "",
+      "Use conventional commits: `<type>(<scope>): <description>`",
+      "Types: feat, fix, docs, style, refactor, perf, test, chore",
+      "Examples: `feat: add login endpoint`, `fix(auth): handle expired tokens`"
+    );
+  } else if (git.commitStyle === "custom" && git.commitTemplate) {
+    lines.push("", `Commit message template: ${git.commitTemplate}`);
+  }
+
+  const base = git.defaultBranch ?? "main";
+  lines.push(
+    "",
+    "After completing the task, open a pull request with the gh CLI:",
+    `  gh pr create --base ${base} --title "<concise title>" --body "<what changed and why>"`
+  );
+
+  return lines.join("\n");
 }
 
 export class Intent {
@@ -57,10 +103,12 @@ export class Task {
   async *run(): AsyncGenerator<unknown> {
     const ctx = await this.config.sandbox.start();
     try {
-      const systemPrompt = composeSystemPrompt(
-        this.config.systemPrompt,
-        this.intent.resolved
-      );
+      const sections: string[] = [];
+      const base = composeSystemPrompt(this.config.systemPrompt, this.intent.resolved);
+      if (base) sections.push(base);
+      if (this.config.git) sections.push(composeGitSection(this.config.git));
+      const systemPrompt = sections.length ? sections.join("\n\n---\n\n") : undefined;
+
       yield* this.config.agent.run(this.intent.prompt, {
         cwd: this.config.cwd,
         systemPrompt,
@@ -81,6 +129,7 @@ export class Burrow {
       this.config.burrowDir ??
       (this.config.cwd ? join(this.config.cwd, ".burrow") : undefined);
     const resolved = resolveIntent(burrowDir, prompt);
+    const git = this.config.git;
 
     return new Intent(
       prompt,
@@ -90,6 +139,13 @@ export class Burrow {
         cwd: this.config.cwd,
         systemPrompt: !!sp,
         systemPromptLines: sp ? sp.split("\n").length : undefined,
+        git: git
+          ? {
+              branchPattern: git.branchPattern,
+              commitStyle: git.commitStyle,
+              defaultBranch: git.defaultBranch,
+            }
+          : undefined,
         intent: resolved
           ? {
               name: resolved.name,

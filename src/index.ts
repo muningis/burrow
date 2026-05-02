@@ -1,6 +1,8 @@
 export { Burrow, Intent, Task } from "./burrow.js";
 export type {
   BurrowConfig,
+  CommitStyle,
+  GitConfig,
   IntentInferred,
   IntentResourceSummary,
 } from "./burrow.js";

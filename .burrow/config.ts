@@ -11,6 +11,7 @@ export default new Burrow({
   agent: claudeCode("claude-opus-4-7", { permissionMode: "bypassPermissions" }),
   sandbox: docker({
     imageName: "burrow:local",
+    ssh: true,
   }),
   cwd: join(import.meta.dir, ".."),
   systemPrompt,

@@ -111,16 +111,22 @@ Extend it with whatever your project needs:
 ```dockerfile
 FROM oven/bun:alpine
 
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates openssh-client github-cli
 
 # add your project's runtime dependencies here
 
-RUN adduser -D -h /home/raccoon raccoon
+RUN adduser -D -h /home/raccoon raccoon \
+ && mkdir -p /home/raccoon/.ssh \
+ && chown -R raccoon:raccoon /home/raccoon/.ssh \
+ && chmod 700 /home/raccoon/.ssh
+
 USER raccoon
 WORKDIR /home/raccoon/workspace
 ```
 
-Rebuild whenever the `Dockerfile` changes.
+`openssh-client`, `github-cli`, and the pre-created `~/.ssh` directory are needed
+for [SSH agent forwarding](docs/configuration.md#ssh) and `gh pr create` to work
+inside the sandbox. Rebuild whenever the `Dockerfile` changes.
 
 ## Running
 
@@ -147,6 +153,8 @@ Burrow:
 4. Streams output to stdout (tool use to stderr)
 5. Stops and removes the container when done
 
+For the full set of fields, see [docs/configuration.md](docs/configuration.md).
+
 ## Configuration reference
 
 ```typescript
@@ -171,6 +179,7 @@ new Burrow({
       ],
       dns: ["1.1.1.1"],
     },
+    ssh: true,                              // forward host SSH agent for git push
   }),
   cwd: "/path/to/project",
   systemPrompt: "...",
@@ -191,10 +200,21 @@ When `git` is configured, Burrow injects a **Git Workflow** section into the age
 2. Write commits in the requested style (`conventional` → `feat:`, `fix:`, etc.).
 3. Open a pull request with `gh pr create` after the task is complete.
 
-`gh` (the [GitHub CLI](https://cli.github.com)) must be installed and authenticated in the sandbox image for PR creation to work. Add it to your `Dockerfile`:
+`gh` (the [GitHub CLI](https://cli.github.com)) must be installed and authenticated in the sandbox image for PR creation to work. The default Burrow Dockerfile installs it via `apk add github-cli`; for Debian-based images, follow the [gh installation docs](https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
 
-```dockerfile
-RUN apk add --no-cache github-cli
+### `git push` and `gh` authentication
+
+`git push` (over SSH) and `gh pr create` need credentials inside the container. Burrow handles this via two sandbox knobs:
+
+```typescript
+sandbox: docker({
+  imageName: "burrow:local",
+  ssh: true,                                       // forward host SSH agent + known_hosts
+  env: { GH_TOKEN: process.env.GH_TOKEN ?? "" },   // pass through gh auth token
+}),
 ```
 
-Or for Debian-based images, follow the [gh installation docs](https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
+- **`ssh: true`** mounts the host's SSH agent socket and `~/.ssh/known_hosts` into the container so `git@github.com:…` pushes succeed using your existing host keys. On macOS it prefers Docker Desktop's `/run/host-services/ssh-auth.sock` when present, and falls back to `$SSH_AUTH_SOCK` (Colima and other runtimes). On Linux it uses `$SSH_AUTH_SOCK`. See [docs/configuration.md#ssh](docs/configuration.md#ssh) for the full option list.
+- **`GH_TOKEN`** lets `gh` authenticate without a stored config. Alternatively, mount your `~/.config/gh` directory so `gh` reuses your local login.
+
+Forwarding the SSH agent gives the container access to every key currently loaded in your agent — only enable it for sandboxes whose code you trust.

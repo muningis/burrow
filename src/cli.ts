@@ -268,7 +268,7 @@ async function main(): Promise<void> {
     prompt: string;
     inferred: {
       agent: { name: string; model?: string; permissionMode?: string; allowedTools?: readonly string[]; maxTurns?: number };
-      sandbox: { name: string; image?: string; network?: string; mounts?: number; envVars?: number };
+      sandbox: { name: string; image?: string; network?: string; mounts?: number; envVars?: number; ssh?: boolean };
       cwd?: string;
       systemPrompt: boolean;
       systemPromptLines?: number;
@@ -318,6 +318,7 @@ async function main(): Promise<void> {
   if (i.sandbox.network) rows.push(["network", cyan(i.sandbox.network)]);
   if (i.sandbox.mounts) rows.push(["mounts", String(i.sandbox.mounts)]);
   if (i.sandbox.envVars) rows.push(["env", `${i.sandbox.envVars} ${dim("var(s)")}`]);
+  if (i.sandbox.ssh) rows.push(["ssh", green("forwarded")]);
   if (i.git) {
     const parts: string[] = [];
     if (i.git.branchPattern) parts.push(i.git.branchPattern);

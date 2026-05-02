@@ -58,6 +58,12 @@ function composeGitSection(git: GitConfig): string {
     );
   }
 
+  if (git.branchPattern && !git.branchPattern.includes("<slug>")) {
+    throw new Error(
+      `GitConfig: branchPattern "${git.branchPattern}" must contain the "<slug>" placeholder`
+    );
+  }
+
   const lines: string[] = ["# Git Workflow"];
 
   const example = git.branchPattern
@@ -109,14 +115,14 @@ export class Task {
   ) {}
 
   async *run(): AsyncGenerator<unknown> {
+    const sections: string[] = [];
+    const base = composeSystemPrompt(this.config.systemPrompt, this.intent.resolved);
+    if (base) sections.push(base);
+    if (this.config.git) sections.push(composeGitSection(this.config.git));
+    const systemPrompt = sections.length ? sections.join("\n\n---\n\n") : undefined;
+
     const ctx = await this.config.sandbox.start();
     try {
-      const sections: string[] = [];
-      const base = composeSystemPrompt(this.config.systemPrompt, this.intent.resolved);
-      if (base) sections.push(base);
-      if (this.config.git) sections.push(composeGitSection(this.config.git));
-      const systemPrompt = sections.length ? sections.join("\n\n---\n\n") : undefined;
-
       yield* this.config.agent.run(this.intent.prompt, {
         cwd: this.config.cwd,
         systemPrompt,

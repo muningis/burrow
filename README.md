@@ -183,7 +183,7 @@ new Burrow({
 });
 ```
 
-#### Git workflow
+### Git workflow
 
 When `git` is configured, Burrow injects a **Git Workflow** section into the agent's system prompt automatically. The agent will:
 

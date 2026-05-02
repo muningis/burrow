@@ -38,7 +38,7 @@ export interface IntentInferred {
   cwd?: string;
   systemPrompt: boolean;
   systemPromptLines?: number;
-  git?: { branchPattern?: string; commitStyle?: string; defaultBranch?: string };
+  git?: { branchPattern?: string; commitStyle?: string; defaultBranch: string };
   intent?: {
     name: string;
     type: string;
@@ -52,17 +52,25 @@ export interface IntentInferred {
 }
 
 function composeGitSection(git: GitConfig): string {
+  if (git.commitStyle === "custom" && !git.commitTemplate) {
+    throw new Error(
+      'GitConfig: commitStyle "custom" requires commitTemplate to be set'
+    );
+  }
+
   const lines: string[] = ["# Git Workflow"];
 
+  const example = git.branchPattern
+    ? git.branchPattern.replace("<slug>", "your-task-slug")
+    : "your-task-slug";
+  lines.push(
+    "",
+    "Before making any changes, create a branch:",
+    `  git checkout -b ${example}`,
+    "Replace the slug with a short kebab-case description of the task."
+  );
   if (git.branchPattern) {
-    const example = git.branchPattern.replace("<slug>", "your-task-slug");
-    lines.push(
-      "",
-      "Before making any changes, create a branch:",
-      `  git checkout -b ${example}`,
-      `Replace the slug with a short kebab-case description of the task.`,
-      `Branch pattern: \`${git.branchPattern}\``
-    );
+    lines.push(`Branch pattern: \`${git.branchPattern}\``);
   }
 
   if (git.commitStyle === "conventional") {
@@ -72,7 +80,7 @@ function composeGitSection(git: GitConfig): string {
       "Types: feat, fix, docs, style, refactor, perf, test, chore",
       "Examples: `feat: add login endpoint`, `fix(auth): handle expired tokens`"
     );
-  } else if (git.commitStyle === "custom" && git.commitTemplate) {
+  } else if (git.commitStyle === "custom") {
     lines.push("", `Commit message template: ${git.commitTemplate}`);
   }
 
@@ -143,7 +151,7 @@ export class Burrow {
           ? {
               branchPattern: git.branchPattern,
               commitStyle: git.commitStyle,
-              defaultBranch: git.defaultBranch,
+              defaultBranch: git.defaultBranch ?? "main",
             }
           : undefined,
         intent: resolved

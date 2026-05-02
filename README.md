@@ -174,5 +174,27 @@ new Burrow({
   }),
   cwd: "/path/to/project",
   systemPrompt: "...",
+  git: {
+    branchPattern: "feature/<slug>",  // agent creates a branch before making changes
+    commitStyle: "conventional",      // "conventional" | "custom"
+    commitTemplate: "...",            // used when commitStyle is "custom"
+    defaultBranch: "main",            // base branch for gh pr create (default: "main")
+  },
 });
 ```
+
+### Git workflow
+
+When `git` is configured, Burrow injects a **Git Workflow** section into the agent's system prompt automatically. The agent will:
+
+1. Create a branch before touching any files. If `branchPattern` is set, `<slug>` is replaced with a short kebab-case description of the task (e.g. `feature/add-login-page`). If `branchPattern` is omitted, the slug is used directly as the branch name (e.g. `add-login-page`).
+2. Write commits in the requested style (`conventional` → `feat:`, `fix:`, etc.).
+3. Open a pull request with `gh pr create` after the task is complete.
+
+`gh` (the [GitHub CLI](https://cli.github.com)) must be installed and authenticated in the sandbox image for PR creation to work. Add it to your `Dockerfile`:
+
+```dockerfile
+RUN apk add --no-cache github-cli
+```
+
+Or for Debian-based images, follow the [gh installation docs](https://github.com/cli/cli/blob/trunk/docs/install_linux.md).

@@ -263,7 +263,7 @@ async function main(): Promise<void> {
     task: (i: unknown) => { run: () => AsyncIterable<unknown> };
   };
 
-  type Scope = "project" | "user" | "builtin";
+  type Scope = "project" | "user" | "installed";
   const intent = b.intent(prompt) as {
     prompt: string;
     inferred: {
@@ -272,6 +272,7 @@ async function main(): Promise<void> {
       cwd?: string;
       systemPrompt: boolean;
       systemPromptLines?: number;
+      git?: { branchPattern?: string; commitStyle?: string; defaultBranch?: string };
       intent?: { name: string; type: string; description?: string; scope?: Scope };
       agents: Array<{ name: string; scope?: Scope }>;
       skills: Array<{ name: string; scope?: Scope }>;
@@ -283,7 +284,7 @@ async function main(): Promise<void> {
   const scopeMark: Record<Scope, string> = {
     project: "",
     user: dim("·user"),
-    builtin: dim("·builtin"),
+    installed: dim("·installed"),
   };
   const fmt = (r: { name: string; scope?: Scope }) =>
     r.scope && r.scope !== "project" ? `${r.name}${scopeMark[r.scope]}` : r.name;
@@ -317,6 +318,13 @@ async function main(): Promise<void> {
   if (i.sandbox.network) rows.push(["network", cyan(i.sandbox.network)]);
   if (i.sandbox.mounts) rows.push(["mounts", String(i.sandbox.mounts)]);
   if (i.sandbox.envVars) rows.push(["env", `${i.sandbox.envVars} ${dim("var(s)")}`]);
+  if (i.git) {
+    const parts: string[] = [];
+    if (i.git.branchPattern) parts.push(i.git.branchPattern);
+    if (i.git.commitStyle) parts.push(i.git.commitStyle);
+    if (i.git.defaultBranch) parts.push(`→ ${i.git.defaultBranch}`);
+    rows.push(["git", cyan(parts.join(dim("  ·  ")))]);
+  }
   if (i.agents.length) rows.push(["agents", cyan(i.agents.map(fmt).join(", "))]);
   if (i.skills.length) rows.push(["skills", cyan(i.skills.map(fmt).join(", "))]);
   if (i.context.length) rows.push(["context", cyan(i.context.map(fmt).join(", "))]);

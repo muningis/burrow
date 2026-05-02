@@ -93,8 +93,12 @@ function composeGitSection(git: GitConfig): string {
   const base = git.defaultBranch ?? "main";
   lines.push(
     "",
-    "After completing the task, open a pull request with the gh CLI:",
-    `  gh pr create --base ${base} --title "<concise title>" --body "<what changed and why>"`
+    "After completing the task, run these steps in order — all are required:",
+    "  1. git add -A",
+    `  2. git commit -m "<message>"`,
+    "  3. git push -u origin HEAD",
+    `  4. gh pr create --base ${base} --title "<concise title>" --body "<what changed and why>"`,
+    "The task is not finished until the PR is open."
   );
 
   return lines.join("\n");

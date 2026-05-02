@@ -8,7 +8,7 @@ const systemPrompt = readFileSync(
 );
 
 export default new Burrow({
-  agent: claudeCode("claude-opus-4-7", { permissionMode: "acceptEdits" }),
+  agent: claudeCode("claude-opus-4-7", { permissionMode: "bypassPermissions" }),
   sandbox: docker({
     imageName: "burrow:local",
   }),

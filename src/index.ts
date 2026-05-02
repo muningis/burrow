@@ -31,4 +31,6 @@ export type {
   Network,
   NetworkConfig,
   AllowedHost,
+  Ssh,
+  SshConfig,
 } from "./sandbox/sandbox.js";

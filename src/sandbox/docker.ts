@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
-import { promisify } from "util";
+import { existsSync } from "fs";
 import os from "os";
+import { promisify } from "util";
 import type {
   AllowedHost,
   Mount,
@@ -9,15 +10,20 @@ import type {
   SandboxContext,
   SandboxProvider,
   SandboxSummary,
+  Ssh,
+  SshConfig,
 } from "./sandbox.js";
 
 const execFileAsync = promisify(execFile);
+
+const DOCKER_DESKTOP_SSH_SOCK = "/run/host-services/ssh-auth.sock";
 
 export interface DockerSandboxConfig {
   imageName: string;
   mounts?: Mount[];
   env?: Record<string, string | boolean | number>;
   network?: Network;
+  ssh?: Ssh;
 }
 
 function expandPath(p: string): string {
@@ -36,6 +42,12 @@ function normalizeNetwork(network?: Network): NetworkConfig {
   if (!network) return {};
   if (typeof network === "string") return { mode: network };
   return network;
+}
+
+function normalizeSsh(ssh?: Ssh): SshConfig | null {
+  if (ssh === undefined || ssh === false) return null;
+  if (ssh === true) return {};
+  return ssh;
 }
 
 function formatAllowedHost(entry: AllowedHost | string): string {
@@ -62,6 +74,66 @@ function networkArgs(network: NetworkConfig): string[] {
   return args;
 }
 
+interface SshRuntime {
+  args: string[];
+  env: Record<string, string>;
+}
+
+function sshAgentSocket(): { source: string; target: string } | null {
+  if (process.platform === "darwin") {
+    return { source: DOCKER_DESKTOP_SSH_SOCK, target: DOCKER_DESKTOP_SSH_SOCK };
+  }
+  const sock = process.env.SSH_AUTH_SOCK;
+  if (!sock) return null;
+  return { source: sock, target: "/run/ssh-agent.sock" };
+}
+
+function sshArgs(ssh: SshConfig): SshRuntime {
+  const args: string[] = [];
+  const env: Record<string, string> = {};
+  const containerHome = ssh.containerHome ?? "/home/raccoon";
+  const containerSshDir = `${containerHome}/.ssh`;
+
+  if (ssh.agent !== false) {
+    const sock = sshAgentSocket();
+    if (!sock) {
+      throw new Error(
+        "ssh.agent is enabled but SSH_AUTH_SOCK is not set on the host. Start an ssh-agent or set ssh.agent: false."
+      );
+    }
+    args.push(
+      "--mount",
+      `type=bind,source=${sock.source},target=${sock.target}`
+    );
+    env.SSH_AUTH_SOCK = sock.target;
+  }
+
+  const hostDir = expandPath(ssh.hostDir ?? "~/.ssh");
+
+  const fileMount = (name: string, override: boolean | string | undefined, defaultOn: boolean) => {
+    if (override === false) return;
+    const enabled = override === undefined ? defaultOn : true;
+    if (!enabled) return;
+    const source =
+      typeof override === "string" ? expandPath(override) : `${hostDir}/${name}`;
+    if (!existsSync(source)) {
+      if (typeof override === "string") {
+        throw new Error(`ssh.${name}: file not found at ${source}`);
+      }
+      return;
+    }
+    args.push(
+      "--mount",
+      `type=bind,source=${source},target=${containerSshDir}/${name},readonly`
+    );
+  };
+
+  fileMount("known_hosts", ssh.knownHosts, true);
+  fileMount("config", ssh.config, false);
+
+  return { args, env };
+}
+
 async function cli(...args: string[]): Promise<string> {
   try {
     const { stdout } = await execFileAsync("docker", args);
@@ -84,6 +156,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       network: network.mode,
       mounts: config.mounts?.length ?? 0,
       envVars: Object.keys(config.env ?? {}).length,
+      ssh: normalizeSsh(config.ssh) !== null,
     };
   }
 
@@ -91,6 +164,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     this.containerName = `burrow-${Date.now()}`;
     const env = normalizeEnv(this.config.env ?? {});
     const network = normalizeNetwork(this.config.network);
+    const ssh = normalizeSsh(this.config.ssh);
+    const sshRuntime = ssh ? sshArgs(ssh) : null;
+
+    if (sshRuntime) Object.assign(env, sshRuntime.env);
 
     await cli(
       "run", "-d",
@@ -100,6 +177,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--mount",
         `type=bind,source=${expandPath(m.source)},target=${m.target}`,
       ]),
+      ...(sshRuntime?.args ?? []),
       ...networkArgs(network),
       this.config.imageName,
       "sleep", "infinity",

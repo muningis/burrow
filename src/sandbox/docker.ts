@@ -77,10 +77,16 @@ function networkArgs(network: NetworkConfig): string[] {
 interface SshRuntime {
   args: string[];
   env: Record<string, string>;
+  socketSource: string | null;
 }
 
 function sshAgentSocket(): { source: string; target: string } | null {
-  if (process.platform === "darwin" && existsSync(DOCKER_DESKTOP_SSH_SOCK)) {
+  if (process.platform === "darwin") {
+    // Docker on macOS runs inside a VM (Docker Desktop or Colima). existsSync
+    // would check the host filesystem, but Docker's daemon only sees the VM's
+    // filesystem. DOCKER_DESKTOP_SSH_SOCK is exposed inside the VM by Docker
+    // Desktop automatically and by Colima when started with --ssh-agent. macOS's
+    // own SSH_AUTH_SOCK (a launchd socket) is host-only and not bind-mountable.
     return { source: DOCKER_DESKTOP_SSH_SOCK, target: DOCKER_DESKTOP_SSH_SOCK };
   }
   const sock = process.env.SSH_AUTH_SOCK;
@@ -93,14 +99,16 @@ function sshArgs(ssh: SshConfig): SshRuntime {
   const env: Record<string, string> = {};
   const containerHome = ssh.containerHome ?? "/home/raccoon";
   const containerSshDir = `${containerHome}/.ssh`;
+  let socketSource: string | null = null;
 
   if (ssh.agent !== false) {
     const sock = sshAgentSocket();
     if (!sock) {
       throw new Error(
-        "ssh.agent is enabled but no SSH agent socket was found (tried Docker Desktop socket and SSH_AUTH_SOCK). Start an ssh-agent or set ssh.agent: false."
+        "ssh.agent is enabled but SSH_AUTH_SOCK is not set or does not exist. Start an ssh-agent or set ssh.agent: false."
       );
     }
+    socketSource = sock.source;
     args.push(
       "--mount",
       `type=bind,source=${sock.source},target=${sock.target}`
@@ -131,7 +139,7 @@ function sshArgs(ssh: SshConfig): SshRuntime {
   fileMount("known_hosts", ssh.knownHosts, true);
   fileMount("config", ssh.config, false);
 
-  return { args, env };
+  return { args, env, socketSource };
 }
 
 async function cli(...args: string[]): Promise<string> {
@@ -169,19 +177,37 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     if (sshRuntime) Object.assign(env, sshRuntime.env);
 
-    await cli(
-      "run", "-d",
-      "--name", this.containerName,
-      ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
-      ...(this.config.mounts ?? []).flatMap((m) => [
-        "--mount",
-        `type=bind,source=${expandPath(m.source)},target=${m.target}`,
-      ]),
-      ...(sshRuntime?.args ?? []),
-      ...networkArgs(network),
-      this.config.imageName,
-      "sleep", "infinity",
-    );
+    try {
+      await cli(
+        "run", "-d",
+        "--name", this.containerName,
+        ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
+        ...(this.config.mounts ?? []).flatMap((m) => [
+          "--mount",
+          `type=bind,source=${expandPath(m.source)},target=${m.target}`,
+        ]),
+        ...(sshRuntime?.args ?? []),
+        ...networkArgs(network),
+        this.config.imageName,
+        "sleep", "infinity",
+      );
+    } catch (err) {
+      const errMsg = (err as Error).message ?? "";
+      if (
+        sshRuntime?.socketSource &&
+        errMsg.includes("bind source path does not exist") &&
+        errMsg.includes(sshRuntime.socketSource)
+      ) {
+        throw new Error(
+          "ssh.agent is enabled but the SSH agent socket is not available inside the Docker VM.\n" +
+          "  • Docker Desktop: should work automatically\n" +
+          "  • Colima: restart with `colima start --ssh-agent`\n" +
+          "  • Other runtimes: ensure the SSH agent socket is exposed inside the VM\n" +
+          "To skip agent forwarding set: ssh: { agent: false }"
+        );
+      }
+      throw err;
+    }
 
     return { env, containerId: this.containerName };
   }

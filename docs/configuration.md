@@ -116,13 +116,22 @@ ssh: {
 
 | Field           | Type                  | Default            | Description                                                                                                                           |
 | --------------- | --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent`         | `boolean`             | `true`             | Forward the host's SSH agent socket and set `SSH_AUTH_SOCK` in the container. On macOS tries Docker Desktop's `/run/host-services/ssh-auth.sock` first, then falls back to `$SSH_AUTH_SOCK` (Colima, Rancher Desktop, etc.). On Linux uses `$SSH_AUTH_SOCK`. |
+| `agent`         | `boolean`             | `true`             | Forward the host's SSH agent socket and set `SSH_AUTH_SOCK` in the container. On macOS uses `/run/host-services/ssh-auth.sock`, exposed automatically by Docker Desktop and by Colima when started with `colima start --ssh-agent`. On Linux uses `$SSH_AUTH_SOCK`. |
 | `knownHosts`    | `boolean \| string`   | `true`             | Mount `<hostDir>/known_hosts` read-only into `<containerHome>/.ssh/known_hosts`. Pass a path to use a custom file.                    |
 | `config`        | `boolean \| string`   | `false`            | Mount `<hostDir>/config` read-only. Enable if your SSH config drives host or identity selection.                                       |
 | `hostDir`       | `string`              | `"~/.ssh"`         | Source directory on the host for `knownHosts` / `config`.                                                                             |
 | `containerHome` | `string`              | `"/home/raccoon"`  | Home directory of the container user. The mount target for `~/.ssh` files is `<containerHome>/.ssh/`.                                  |
 
-**Requirements:**
+**Runtime-specific setup:**
+
+| Runtime         | Required setup                                                  |
+| --------------- | --------------------------------------------------------------- |
+| Docker Desktop  | Works automatically; no extra steps.                            |
+| Colima          | `colima start --ssh-agent` (or add `sshAgent: true` to `~/.colima/default/colima.yaml`). |
+| Rancher Desktop | Enable "Allow Docker socket" and configure SSH agent in preferences. |
+| Linux (native)  | Start `ssh-agent`, add your key with `ssh-add`, ensure `$SSH_AUTH_SOCK` is set. |
+
+**Other requirements:**
 
 - An ssh-agent must be running on the host with your key added (`ssh-add -l` to verify).
 - The container image must include `openssh-client` so `git` over SSH works (the

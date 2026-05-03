@@ -3,7 +3,7 @@ description: Review code or a pull request for correctness and style
 when: User asks to review check audit feedback critique inspect pull request diff
 type: Review
 agents: [reviewer]
-skills: [run-typecheck]
+skills: [verify-loop]
 ---
 
 ## Goal

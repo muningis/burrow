@@ -10,6 +10,7 @@
   },
   "files": [
     "dist",
+    "builtin",
     "LICENSE",
     "README.md"
   ],

@@ -28,10 +28,19 @@ The full layout looks like this:
 ├── agents/                # project-local agents
 │   └── reviewer.md
 └── skills/                # project-local skills
-    └── run-tests.md
+    └── verify-loop.md
 ```
 
 Only `config.ts` and `system-prompt.md` are required. `intents/`, `agents/`, and `skills/` are picked up automatically when present.
+
+Burrow also ships a small set of **built-in implementation intents** —
+`CodeWrite`, `FixPr`, `IntentCreate` — which are always discoverable even
+without any project-local intents. They follow a strict
+Red → Green → Verify → Ship flow and defer the verify step to a
+project-defined `verify-loop` skill so they stay language-agnostic. Define
+`.burrow/skills/verify-loop.md` for your project to point at the right
+command (e.g. `bun run typecheck`, `pytest`, `make check`). Project intents
+override the built-ins by name.
 
 **`.burrow/system-prompt.md`** — what the agent is told at startup:
 
@@ -104,7 +113,7 @@ Burrow also resolves names from Claude Code's conventional locations, so any age
 - `<project>/.claude/skills/<name>.md` or `<project>/.claude/skills/<name>/SKILL.md`
 - `~/.claude/skills/<name>.md` or `~/.claude/skills/<name>/SKILL.md`
 
-Lookup order is: project `.burrow/`, project `.claude/`, user `~/.config/burrow/`, user `~/.claude/`, then installed bundles. The first match wins.
+Lookup order is: project `.burrow/`, project `.claude/`, user `~/.config/burrow/`, user `~/.claude/`, installed bundles, then the `builtin` built-in bundle. The first match wins.
 
 ### 2. Build the `burrow:local` image
 
@@ -162,6 +171,8 @@ Burrow:
 5. Stops and removes the container when done
 
 For the full set of fields, see [docs/configuration.md](docs/configuration.md).
+For sandbox SSH / `gh` / `glab` setup so the built-in implementation intents
+can push and open PRs, see [docs/setup.md](docs/setup.md).
 
 ## Configuration reference
 

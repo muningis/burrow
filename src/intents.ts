@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join } from "path";
+import { fileURLToPath } from "url";
 
-export type IntentScopeKind = "project" | "user" | "installed";
+export type IntentScopeKind = "project" | "user" | "installed" | "builtin";
 
 export interface IntentScope {
   kind: IntentScopeKind;
@@ -231,6 +232,18 @@ export function userClaudeDir(): string {
   return join(homedir(), ".claude");
 }
 
+export function builtinScope(): IntentScope | null {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [join(here, "..", "builtin"), join(here, "..", "..", "builtin")];
+  for (const dir of candidates) {
+    if (existsSync(dir) && statSync(dir).isDirectory()) {
+      return { kind: "builtin", dir };
+    }
+  }
+  return null;
+}
+
+
 export function defaultScopes(projectDir?: string): IntentScope[] {
   const out: IntentScope[] = [];
   if (projectDir && existsSync(projectDir)) out.push({ kind: "project", dir: projectDir });
@@ -243,6 +256,8 @@ export function defaultScopes(projectDir?: string): IntentScope[] {
   const uc = userClaudeDir();
   if (existsSync(uc)) out.push({ kind: "user", dir: uc });
   out.push(...installedScopes());
+  const b = builtinScope();
+  if (b) out.push(b);
   return out;
 }
 

@@ -2,6 +2,8 @@
 description: Run the project's verification loop until it passes
 ---
 
+# Verify loop
+
 The Verify Loop is the project-defined sequence of checks that must pass before
 work is considered complete. It is language- and stack-agnostic: this skill does
 not assume any specific tool, command, or runtime.

@@ -1,6 +1,6 @@
 ---
 description: Address unresolved review comments on a pull request or merge request
-when: User asks to resolve unresolved comments threads address pending merge request outstanding
+when: User asks to resolve unresolved comment threads on a pending pull request or merge request, or to address outstanding review feedback
 type: FixPrComments
 agents: [implementer]
 skills: [run-typecheck]
@@ -18,11 +18,12 @@ landing the smallest change per thread without expanding scope.
    remote.
 2. Fetch the unresolved threads for the given number:
    - GitHub: fetch `reviewThreads` via `gh api graphql` with query for
-     `repository.pullRequest(number: <n>) { reviewThreads { nodes { ... } } }`,
-     keep entries where `isResolved` is false; pull inline comments via
-     `gh api --paginate repos/<owner>/<repo>/pulls/<n>/comments` for file/line context.
-   - GitLab: `glab api projects/:id/merge_requests/<n>/discussions` and keep
-     entries where `resolvable` is true and `resolved` is false.
+     `repository.pullRequest(number: <n>) { reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { isResolved comments(first: 100) { nodes { path line author { login } body } } } } }`,
+     loop until `pageInfo.hasNextPage` is false, and keep thread entries where
+     `isResolved` is false. The embedded `comments` nodes already carry file/line
+     context, so no separate REST call is needed.
+   - GitLab: `glab api --paginate projects/:id/merge_requests/<n>/discussions`
+     and keep entries where `resolvable` is true and `resolved` is false.
 3. For each unresolved thread, read the referenced file and surrounding code,
    then implement the smallest change that addresses the comment.
 4. Run `bun run typecheck` once all threads are handled.

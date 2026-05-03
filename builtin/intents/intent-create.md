@@ -13,7 +13,7 @@ Add a well-formed intent under `.burrow/intents/` that the resolver in
 
 ## Flow
 
-This intent has four phases. Treat them as ordered — never skip ahead.
+This intent has five phases. Treat them as ordered — never skip ahead.
 
 ### 1. Inputs to confirm
 

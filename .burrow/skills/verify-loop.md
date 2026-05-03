@@ -2,9 +2,11 @@
 description: Verify loop for the Burrow codebase
 ---
 
+# Verify loop
+
 The Burrow project's verify loop is a single command:
 
-```
+```bash
 bun run typecheck
 ```
 

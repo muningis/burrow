@@ -13,7 +13,7 @@ landing the smallest change per thread without expanding scope.
 
 ## Flow
 
-This intent has four phases. Treat them as ordered — never skip ahead. The PR
+This intent has five phases. Treat them as ordered — never skip ahead. The PR
 or MR already exists, so this flow ends at `git push`; do not open a new one.
 
 ### 1. Discover unresolved threads

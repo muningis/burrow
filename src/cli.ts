@@ -269,7 +269,7 @@ async function main(): Promise<void> {
     task: (i: unknown) => { run: () => AsyncIterable<unknown> };
   };
 
-  type Scope = "project" | "user" | "installed";
+  type Scope = "project" | "user" | "installed" | "builtin";
   const intent = b.intent(prompt) as {
     prompt: string;
     inferred: {
@@ -291,6 +291,7 @@ async function main(): Promise<void> {
     project: "",
     user: dim("·user"),
     installed: dim("·installed"),
+    builtin: dim("·builtin"),
   };
   const fmt = (r: { name: string; scope?: Scope }) =>
     r.scope && r.scope !== "project" ? `${r.name}${scopeMark[r.scope]}` : r.name;

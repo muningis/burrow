@@ -3,7 +3,7 @@ description: Security review of recent changes or a specific component
 when: User asks about security vulnerability vulnerabilities exploit injection sandbox escape unsafe
 type: Security
 agents: [reviewer]
-skills: [run-typecheck]
+skills: [verify-loop]
 ---
 
 ## Goal

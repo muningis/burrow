@@ -33,6 +33,15 @@ The full layout looks like this:
 
 Only `config.ts` and `system-prompt.md` are required. `intents/`, `agents/`, and `skills/` are picked up automatically when present.
 
+Burrow also ships a small set of **built-in implementation intents** —
+`CodeWrite`, `FixPr`, `IntentCreate` — which are always discoverable even
+without any project-local intents. They follow a strict
+Red → Green → Verify → Ship flow and defer the verify step to a
+project-defined `verify-loop` skill so they stay language-agnostic. Define
+`.burrow/skills/verify-loop.md` for your project to point at the right
+command (e.g. `bun run typecheck`, `pytest`, `make check`). Project intents
+override the built-ins by name.
+
 **`.burrow/system-prompt.md`** — what the agent is told at startup:
 
 ```markdown
@@ -162,6 +171,8 @@ Burrow:
 5. Stops and removes the container when done
 
 For the full set of fields, see [docs/configuration.md](docs/configuration.md).
+For sandbox SSH / `gh` / `glab` setup so the built-in implementation intents
+can push and open PRs, see [docs/setup.md](docs/setup.md).
 
 ## Configuration reference
 

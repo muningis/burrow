@@ -113,7 +113,7 @@ Burrow also resolves names from Claude Code's conventional locations, so any age
 - `<project>/.claude/skills/<name>.md` or `<project>/.claude/skills/<name>/SKILL.md`
 - `~/.claude/skills/<name>.md` or `~/.claude/skills/<name>/SKILL.md`
 
-Lookup order is: project `.burrow/`, project `.claude/`, user `~/.config/burrow/`, user `~/.claude/`, installed bundles, then built-in bundles. The first match wins.
+Lookup order is: project `.burrow/`, project `.claude/`, user `~/.config/burrow/`, user `~/.claude/`, installed bundles, then the `builtin` built-in bundle. The first match wins.
 
 ### 2. Build the `burrow:local` image
 

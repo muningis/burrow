@@ -207,7 +207,33 @@ export class Task {
     let resultCost: number | undefined;
     let finalMessage: string | undefined;
 
-    const ctx = await this.config.sandbox.start();
+    const errorMessage = (err: unknown): string =>
+      err instanceof Error ? err.message : String(err);
+
+    let ctx;
+    try {
+      ctx = await this.config.sandbox.start();
+    } catch (err) {
+      await fireHook(
+        hooks,
+        { event: "SessionError", prompt, cwd, error: errorMessage(err) },
+        cwd
+      );
+      await fireHook(
+        hooks,
+        {
+          event: "SessionEnd",
+          prompt,
+          cwd,
+          status: "error",
+          summary: `Failed: sandbox start (${errorMessage(err)})`,
+        },
+        cwd
+      );
+      throw err;
+    }
+
+    let runError: unknown;
     try {
       for await (const message of this.config.agent.run(prompt, {
         cwd,
@@ -233,24 +259,32 @@ export class Task {
         yield message;
       }
     } catch (err) {
+      runError = err;
       await fireHook(
         hooks,
-        {
-          event: "SessionError",
-          prompt,
-          cwd,
-          error: err instanceof Error ? err.message : String(err),
-        },
+        { event: "SessionError", prompt, cwd, error: errorMessage(err) },
         cwd
       );
-      throw err;
     } finally {
-      await this.config.sandbox.stop();
+      try {
+        await this.config.sandbox.stop();
+      } catch (err) {
+        await fireHook(
+          hooks,
+          { event: "SessionError", prompt, cwd, error: errorMessage(err) },
+          cwd
+        );
+      }
     }
 
-    const status: "success" | "error" = resultSubtype === "success" ? "success" : "error";
+    const status: "success" | "error" =
+      !runError && resultSubtype === "success" ? "success" : "error";
     const summary =
-      status === "success" ? "Completed" : `Failed: ${resultSubtype ?? "unknown"}`;
+      status === "success"
+        ? "Completed"
+        : runError
+          ? `Failed: ${errorMessage(runError)}`
+          : `Failed: ${resultSubtype ?? "unknown"}`;
     await fireHook(
       hooks,
       {
@@ -265,6 +299,8 @@ export class Task {
       },
       cwd
     );
+
+    if (runError) throw runError;
   }
 }
 

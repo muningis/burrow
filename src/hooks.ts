@@ -72,10 +72,18 @@ export interface HooksConfig {
   SessionError?: Hook<SessionErrorPayload> | Hook<SessionErrorPayload>[];
 }
 
+const MAX_ENV_VALUE = 4096;
+
+function envValue(value: string): string {
+  return value.length > MAX_ENV_VALUE
+    ? `${value.slice(0, MAX_ENV_VALUE)}…`
+    : value;
+}
+
 function payloadEnv(payload: HookPayload): Record<string, string> {
   const env: Record<string, string> = {
     BURROW_EVENT: payload.event,
-    BURROW_PROMPT: payload.prompt,
+    BURROW_PROMPT: envValue(payload.prompt),
   };
   if (payload.cwd) env.BURROW_CWD = payload.cwd;
   switch (payload.event) {
@@ -88,17 +96,19 @@ function payloadEnv(payload: HookPayload): Record<string, string> {
       break;
     case "SessionEnd":
       env.BURROW_STATUS = payload.status;
-      env.BURROW_SUMMARY = payload.summary;
+      env.BURROW_SUMMARY = envValue(payload.summary);
       if (payload.subtype) env.BURROW_SUBTYPE = payload.subtype;
       if (payload.cost != null) env.BURROW_COST = String(payload.cost);
-      if (payload.finalMessage) env.BURROW_FINAL_MESSAGE = payload.finalMessage;
+      if (payload.finalMessage) env.BURROW_FINAL_MESSAGE = envValue(payload.finalMessage);
       break;
     case "SessionError":
-      env.BURROW_ERROR = payload.error;
+      env.BURROW_ERROR = envValue(payload.error);
       break;
   }
   return env;
 }
+
+const HOOK_TIMEOUT_MS = 10_000;
 
 async function runCommand(
   hook: HookCommand | string,
@@ -123,8 +133,16 @@ async function runCommand(
         stdio: ["pipe", "inherit", "inherit"],
         shell: isString,
       });
-      proc.on("error", () => resolve());
-      proc.on("exit", () => resolve());
+      const finish = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        proc.kill("SIGTERM");
+        finish();
+      }, HOOK_TIMEOUT_MS);
+      proc.on("error", finish);
+      proc.on("exit", finish);
       proc.stdin?.write(JSON.stringify(payload));
       proc.stdin?.end();
     } catch {

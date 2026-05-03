@@ -20,12 +20,13 @@ landing the smallest change per thread without expanding scope.
    - GitHub: fetch `reviewThreads` via `gh api graphql` with query for
      `repository.pullRequest(number: <n>) { reviewThreads { nodes { ... } } }`,
      keep entries where `isResolved` is false; pull inline comments via
-     `gh api repos/<owner>/<repo>/pulls/<n>/comments` for file/line context.
+     `gh api --paginate repos/<owner>/<repo>/pulls/<n>/comments` for file/line context.
    - GitLab: `glab api projects/:id/merge_requests/<n>/discussions` and keep
      entries where `resolvable` is true and `resolved` is false.
 3. For each unresolved thread, read the referenced file and surrounding code,
    then implement the smallest change that addresses the comment.
 4. Run `bun run typecheck` once all threads are handled.
-5. Report a per-thread summary: the original comment, the `file:line` touched,
+5. Commit the changes and push to the PR branch.
+6. Report a per-thread summary: the original comment, the `file:line` touched,
    and a one-line description of the fix. Do not mark threads resolved on the
    platform unless the user explicitly asked for that.

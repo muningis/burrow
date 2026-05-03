@@ -77,6 +77,7 @@ function networkArgs(network: NetworkConfig): string[] {
 interface SshRuntime {
   args: string[];
   env: Record<string, string>;
+  socketSource: string | null;
 }
 
 function sshAgentSocket(): { source: string; target: string } | null {
@@ -98,6 +99,7 @@ function sshArgs(ssh: SshConfig): SshRuntime {
   const env: Record<string, string> = {};
   const containerHome = ssh.containerHome ?? "/home/raccoon";
   const containerSshDir = `${containerHome}/.ssh`;
+  let socketSource: string | null = null;
 
   if (ssh.agent !== false) {
     const sock = sshAgentSocket();
@@ -106,6 +108,7 @@ function sshArgs(ssh: SshConfig): SshRuntime {
         "ssh.agent is enabled but SSH_AUTH_SOCK is not set or does not exist. Start an ssh-agent or set ssh.agent: false."
       );
     }
+    socketSource = sock.source;
     args.push(
       "--mount",
       `type=bind,source=${sock.source},target=${sock.target}`
@@ -136,7 +139,7 @@ function sshArgs(ssh: SshConfig): SshRuntime {
   fileMount("known_hosts", ssh.knownHosts, true);
   fileMount("config", ssh.config, false);
 
-  return { args, env };
+  return { args, env, socketSource };
 }
 
 async function cli(...args: string[]): Promise<string> {
@@ -189,7 +192,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         "sleep", "infinity",
       );
     } catch (err) {
-      if (sshRuntime && (err as Error).message?.includes("bind source path does not exist")) {
+      const errMsg = (err as Error).message ?? "";
+      if (
+        sshRuntime?.socketSource &&
+        errMsg.includes("bind source path does not exist") &&
+        errMsg.includes(sshRuntime.socketSource)
+      ) {
         throw new Error(
           "ssh.agent is enabled but the SSH agent socket is not available inside the Docker VM.\n" +
           "  • Docker Desktop: should work automatically\n" +

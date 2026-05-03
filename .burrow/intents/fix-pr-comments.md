@@ -6,7 +6,7 @@ agents: [implementer]
 skills: [run-typecheck]
 ---
 
-## Goal
+# Goal
 
 Fix every unresolved review comment on the referenced pull or merge request,
 landing the smallest change per thread without expanding scope.
@@ -17,8 +17,9 @@ landing the smallest change per thread without expanding scope.
    GitLab via `glab`. If ambiguous, infer from the current repo's `origin`
    remote.
 2. Fetch the unresolved threads for the given number:
-   - GitHub: `gh pr view <n> --json reviewThreads` and keep entries where
-     `isResolved` is false; pull the inline comments via
+   - GitHub: fetch `reviewThreads` via `gh api graphql` with query for
+     `repository.pullRequest(number: <n>) { reviewThreads { nodes { ... } } }`,
+     keep entries where `isResolved` is false; pull inline comments via
      `gh api repos/<owner>/<repo>/pulls/<n>/comments` for file/line context.
    - GitLab: `glab api projects/:id/merge_requests/<n>/discussions` and keep
      entries where `resolvable` is true and `resolved` is false.

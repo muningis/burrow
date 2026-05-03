@@ -27,6 +27,7 @@ export interface BurrowConfig {
   systemPrompt?: string;
   hooks?: Record<string, unknown>;
   git?: GitConfig;
+  watch?: boolean;
 }
 
 export interface IntentResourceSummary {
@@ -187,7 +188,11 @@ export class Task {
 }
 
 export class Burrow {
-  constructor(private readonly config: BurrowConfig) {}
+  readonly watch: boolean;
+
+  constructor(private readonly config: BurrowConfig) {
+    this.watch = config.watch ?? false;
+  }
 
   intent(prompt: string): Intent {
     const sp = this.config.systemPrompt;

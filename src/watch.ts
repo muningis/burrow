@@ -118,9 +118,15 @@ export async function watchPr(
 
   const { owner, name } = repoInfo;
 
-  // Snapshot all thread IDs that exist at session start — only IDs new since here trigger fixes
-  const initial = fetchPrSnapshot(prNumber, owner, name, cwd);
-  const seenIds = new Set(initial.allIds);
+  // Snapshot all thread IDs that exist at session start — only IDs new since here trigger fixes.
+  // A transient failure here must not abort the watcher; fall back to empty so the retry loop runs.
+  const seenIds = new Set<string>();
+  try {
+    const initial = fetchPrSnapshot(prNumber, owner, name, cwd);
+    for (const id of initial.allIds) seenIds.add(id);
+  } catch {
+    process.stderr.write(`  ${chalk.dim("Watch: initial snapshot failed — starting from empty")}\n`);
+  }
 
   process.stderr.write(`  ${chalk.dim(`Watching PR #${prNumber} for new review comments…`)}\n`);
 
@@ -140,11 +146,14 @@ export async function watchPr(
     if (snapshot.reviewDecision === "APPROVED" && snapshot.unresolvedIds.size === 0) break;
     if (Date.now() - lastActivityAt > QUIET_MS) break;
 
-    const newUnresolved = [...snapshot.unresolvedIds].filter((id) => !seenIds.has(id));
-    if (newUnresolved.length > 0) {
+    const newIds = [...snapshot.allIds].filter((id) => !seenIds.has(id));
+    if (newIds.length > 0) {
       lastActivityAt = Date.now();
       for (const id of snapshot.allIds) seenIds.add(id);
+    }
 
+    const newUnresolved = newIds.filter((id) => snapshot.unresolvedIds.has(id));
+    if (newUnresolved.length > 0) {
       process.stderr.write(`\n${chalk.bold(chalk.cyan("● Fix PR comments"))}\n`);
       const fixIntent = burrow.intent(`Fix unresolved review comments in PR #${prNumber}`);
       for await (const msg of burrow.task(fixIntent).run()) {

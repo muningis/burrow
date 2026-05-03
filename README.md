@@ -28,7 +28,7 @@ The full layout looks like this:
 ├── agents/                # project-local agents
 │   └── reviewer.md
 └── skills/                # project-local skills
-    └── run-tests.md
+    └── verify-loop.md
 ```
 
 Only `config.ts` and `system-prompt.md` are required. `intents/`, `agents/`, and `skills/` are picked up automatically when present.

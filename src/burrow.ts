@@ -9,6 +9,7 @@ import {
   type IntentScopeKind,
   type ResolvedIntent,
 } from "./intents.js";
+import { fireHook, type HooksConfig } from "./hooks.js";
 
 export type CommitStyle = "conventional" | "custom";
 
@@ -25,7 +26,7 @@ export interface BurrowConfig {
   cwd?: string;
   burrowDir?: string;
   systemPrompt?: string;
-  hooks?: Record<string, unknown>;
+  hooks?: HooksConfig;
   git?: GitConfig;
   watch?: boolean;
 }
@@ -174,16 +175,96 @@ export class Task {
       }
     }
 
+    const hooks = this.config.hooks;
+    const cwd = this.config.cwd;
+    const prompt = this.intent.prompt;
+    const resolved = this.intent.resolved;
+
+    await fireHook(hooks, { event: "SessionStart", prompt, cwd }, cwd);
+    await fireHook(
+      hooks,
+      {
+        event: "IntentResolved",
+        prompt,
+        cwd,
+        intent: resolved
+          ? {
+              name: resolved.name,
+              type: resolved.type,
+              description: resolved.description,
+              scope: resolved.scope,
+            }
+          : null,
+        agents: (resolved?.agents ?? []).map((r) => r.name),
+        skills: (resolved?.skills ?? []).map((r) => r.name),
+        context: (resolved?.context ?? []).map((r) => r.name),
+        docs: (resolved?.docs ?? []).map((r) => r.name),
+      },
+      cwd
+    );
+
+    let resultSubtype: string | undefined;
+    let resultCost: number | undefined;
+    let finalMessage: string | undefined;
+
     const ctx = await this.config.sandbox.start();
     try {
-      yield* this.config.agent.run(this.intent.prompt, {
-        cwd: this.config.cwd,
+      for await (const message of this.config.agent.run(prompt, {
+        cwd,
         systemPrompt,
         env: ctx.env,
-      });
+      })) {
+        const m = message as {
+          type?: string;
+          subtype?: string;
+          total_cost_usd?: number;
+          message?: { content?: Array<{ type: string; text?: string }> };
+        };
+        if (m.type === "result") {
+          resultSubtype = m.subtype;
+          resultCost = m.total_cost_usd;
+        } else if (m.type === "assistant" && m.message?.content) {
+          for (const block of m.message.content) {
+            if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+              finalMessage = block.text;
+            }
+          }
+        }
+        yield message;
+      }
+    } catch (err) {
+      await fireHook(
+        hooks,
+        {
+          event: "SessionError",
+          prompt,
+          cwd,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        cwd
+      );
+      throw err;
     } finally {
       await this.config.sandbox.stop();
     }
+
+    const status: "success" | "error" = resultSubtype === "success" ? "success" : "error";
+    const summary =
+      status === "success" ? "Completed" : `Failed: ${resultSubtype ?? "unknown"}`;
+    await fireHook(
+      hooks,
+      {
+        event: "SessionEnd",
+        prompt,
+        cwd,
+        status,
+        summary,
+        subtype: resultSubtype,
+        cost: resultCost,
+        finalMessage,
+      },
+      cwd
+    );
   }
 }
 

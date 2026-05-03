@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { randomUUID } from "crypto";
 import { join } from "path";
 import type { AgentProvider, AgentSummary } from "./agents/agent.js";
 import type { SandboxProvider, SandboxSummary } from "./sandbox/sandbox.js";
@@ -112,6 +114,41 @@ export class Intent {
   ) {}
 }
 
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function recordTask(burrowDir: string, intent: Intent): void {
+  const tasksDir = join(burrowDir, "tasks");
+  if (!existsSync(tasksDir)) mkdirSync(tasksDir, { recursive: true });
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  const slug = slugify(intent.prompt) || "task";
+  const file = join(tasksDir, `${ts}-${slug}-${randomUUID()}.json`);
+  const resolved = intent.resolved
+    ? {
+        name: intent.resolved.name,
+        type: intent.resolved.type,
+        description: intent.resolved.description,
+        scope: intent.resolved.scope,
+        agents: intent.resolved.agents.map((r) => ({ name: r.name, scope: r.scope })),
+        skills: intent.resolved.skills.map((r) => ({ name: r.name, scope: r.scope })),
+        context: intent.resolved.context.map((r) => ({ name: r.name, scope: r.scope })),
+        docs: intent.resolved.docs.map((r) => ({ name: r.name, scope: r.scope })),
+      }
+    : null;
+  const record = {
+    timestamp: new Date().toISOString(),
+    prompt: intent.prompt,
+    inferred: intent.inferred,
+    resolved,
+  };
+  writeFileSync(file, JSON.stringify(record, null, 2) + "\n");
+}
+
 export class Task {
   constructor(
     private readonly intent: Intent,
@@ -124,6 +161,17 @@ export class Task {
     if (base) sections.push(base);
     if (this.config.git) sections.push(composeGitSection(this.config.git));
     const systemPrompt = sections.length ? sections.join("\n\n---\n\n") : undefined;
+
+    const burrowDir =
+      this.config.burrowDir ??
+      (this.config.cwd ? join(this.config.cwd, ".burrow") : undefined);
+    if (burrowDir) {
+      try {
+        recordTask(burrowDir, this.intent);
+      } catch {
+        // task tracking is best-effort; never fail the run on a write error
+      }
+    }
 
     const ctx = await this.config.sandbox.start();
     try {

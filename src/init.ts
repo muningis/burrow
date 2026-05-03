@@ -85,7 +85,10 @@ USER raccoon
 WORKDIR /home/raccoon/workspace
 `;
 
-const SUBDIRS = ["intents", "agents", "skills", "docs"];
+const SUBDIRS = ["intents", "agents", "skills", "docs", "tasks"];
+
+const PROJECT_GITIGNORE = `tasks/
+`;
 
 interface FileSpec {
   rel: string;
@@ -111,6 +114,7 @@ function projectScaffold(cwd: string): Scaffold {
       { rel: "memory.md", content: MEMORY_MD },
       { rel: "intents/code-write.md", content: SAMPLE_INTENT_MD },
       { rel: "Dockerfile", content: DOCKERFILE },
+      { rel: ".gitignore", content: PROJECT_GITIGNORE },
     ],
   };
 }

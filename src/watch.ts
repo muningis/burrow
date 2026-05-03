@@ -4,6 +4,7 @@ import type { Burrow } from "./burrow.js";
 
 const POLL_MS = 30_000;
 const QUIET_MS = 10 * 60 * 1000;
+const GH_TIMEOUT_MS = 15_000;
 
 // Omit $after default so we only pass it when paginating
 const THREADS_QUERY = `
@@ -37,7 +38,7 @@ interface GraphQLResult {
 }
 
 function ghJson<T>(args: string[], cwd: string): T {
-  const out = execFileSync("gh", args, { cwd, encoding: "utf-8" });
+  const out = execFileSync("gh", args, { cwd, encoding: "utf-8", timeout: GH_TIMEOUT_MS });
   return JSON.parse(out) as T;
 }
 
@@ -121,6 +122,7 @@ export async function watchPr(
   // Snapshot all thread IDs that exist at session start — only IDs new since here trigger fixes.
   // A transient failure here must not abort the watcher; fall back to empty so the retry loop runs.
   const seenIds = new Set<string>();
+  const pendingFixIds = new Set<string>();
   try {
     const initial = fetchPrSnapshot(prNumber, owner, name, cwd);
     for (const id of initial.allIds) seenIds.add(id);
@@ -150,18 +152,25 @@ export async function watchPr(
     const newIds = [...snapshot.allIds].filter((id) => !seenIds.has(id));
     if (newIds.length > 0) {
       lastActivityAt = now;
-      for (const id of snapshot.allIds) seenIds.add(id);
+      for (const id of newIds) {
+        seenIds.add(id);
+        if (snapshot.unresolvedIds.has(id)) pendingFixIds.add(id);
+      }
     }
     if (now - lastActivityAt > QUIET_MS) break;
 
-    const newUnresolved = newIds.filter((id) => snapshot.unresolvedIds.has(id));
-    if (newUnresolved.length > 0) {
+    for (const id of [...pendingFixIds]) {
+      if (!snapshot.unresolvedIds.has(id)) pendingFixIds.delete(id);
+    }
+
+    if (pendingFixIds.size > 0) {
       process.stderr.write(`\n${chalk.bold(chalk.cyan("● Fix PR comments"))}\n`);
       const fixIntent = burrow.intent(`Fix unresolved review comments in PR #${prNumber}`);
       try {
         for await (const msg of burrow.task(fixIntent).run()) {
           onMessage(msg);
         }
+        pendingFixIds.clear();
       } catch (err) {
         process.stderr.write(
           `  ${chalk.dim(

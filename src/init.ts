@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { createHash } from "crypto";
-import { join } from "path";
+import { join, resolve } from "path";
 import chalk from "chalk";
 import { userBurrowDir } from "./intents.js";
 
@@ -325,7 +325,7 @@ function printApplyResult(r: ApplyResult, force: boolean): void {
 export function runInitCli(args: string[]): void {
   const force = args.includes("--force");
   const positional = args.filter((a) => !a.startsWith("--"));
-  const cwd = positional[0] ? join(process.cwd(), positional[0]) : process.cwd();
+  const cwd = positional[0] ? resolve(process.cwd(), positional[0]) : process.cwd();
   const result = runInit(cwd, force);
 
   printApplyResult(result, force);
@@ -413,7 +413,11 @@ function inspect(s: Scaffold, scope: "global" | "project"): DoctorReport {
 function reportHasUpdates(r: DoctorReport): boolean {
   if (!r.exists) return true;
   return r.checks.some(
-    (c) => c.status === "missing" || c.status === "outdated" || c.status === "drift"
+    (c) =>
+      c.status === "missing" ||
+      c.status === "deleted" ||
+      c.status === "outdated" ||
+      c.status === "drift"
   );
 }
 

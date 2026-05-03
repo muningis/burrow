@@ -125,7 +125,7 @@ function printUsage(): void {
   console.error(`Usage:
   burrow "<prompt>"        Run a task in the configured sandbox
   burrow query             Compose a multi-line prompt in $EDITOR (or read from stdin)
-  burrow init [dir]        Scaffold .burrow/ in the current (or given) directory
+  burrow init [dir]        Scaffold or update .burrow/ in the current (or given) directory (use --force to overwrite)
   burrow setup             Scaffold or update ~/.config/burrow/ (use --force to overwrite)
   burrow doctor            Check for updates to ~/.config/burrow/ (--local for .burrow/, --minimal for yes/no)
   burrow install <path>    Install a bundle from a local path into ~/.cache/burrow/

@@ -98,6 +98,14 @@ Frontmatter fields:
 
 `.burrow/agents/` and `.burrow/skills/` hold project-local definitions referenced by intents. Each entry is a markdown file with frontmatter describing the agent or skill, plus the body containing its prompt or instructions. Names referenced from an intent's `agents` / `skills` frontmatter map directly to filenames (without the `.md` extension).
 
+Burrow also resolves names from Claude Code's conventional locations, so any agents or skills you already maintain there are reusable from intents:
+
+- `<project>/.claude/agents/<name>.md` and `~/.claude/agents/<name>.md`
+- `<project>/.claude/skills/<name>.md` or `<project>/.claude/skills/<name>/SKILL.md`
+- `~/.claude/skills/<name>.md` or `~/.claude/skills/<name>/SKILL.md`
+
+Lookup order is: project `.burrow/`, project `.claude/`, user `~/.config/burrow/`, user `~/.claude/`, then installed bundles. The first match wins.
+
 ### 2. Build the `burrow:local` image
 
 Burrow ships a base `Dockerfile` at `src/Dockerfile` — a minimal `oven/bun:alpine` image. Build it from your project root:

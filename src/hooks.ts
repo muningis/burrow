@@ -143,8 +143,8 @@ async function runCommand(
       }, HOOK_TIMEOUT_MS);
       proc.on("error", finish);
       proc.on("exit", finish);
-      proc.stdin?.write(JSON.stringify(payload));
-      proc.stdin?.end();
+      proc.stdin?.on("error", finish);
+      proc.stdin?.end(JSON.stringify(payload));
     } catch {
       resolve();
     }

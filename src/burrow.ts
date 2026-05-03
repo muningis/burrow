@@ -234,6 +234,8 @@ export class Task {
     }
 
     let runError: unknown;
+    let stopError: unknown;
+    let completed = false;
     try {
       for await (const message of this.config.agent.run(prompt, {
         cwd,
@@ -258,6 +260,7 @@ export class Task {
         }
         yield message;
       }
+      completed = true;
     } catch (err) {
       runError = err;
       await fireHook(
@@ -269,6 +272,7 @@ export class Task {
       try {
         await this.config.sandbox.stop();
       } catch (err) {
+        stopError = err;
         await fireHook(
           hooks,
           { event: "SessionError", prompt, cwd, error: errorMessage(err) },
@@ -277,13 +281,19 @@ export class Task {
       }
     }
 
-    const status: "success" | "error" =
-      !runError && resultSubtype === "success" ? "success" : "error";
+    const terminalError = runError ?? stopError;
+    const status: "success" | "error" = terminalError
+      ? "error"
+      : resultSubtype && resultSubtype !== "success"
+        ? "error"
+        : completed
+          ? "success"
+          : "error";
     const summary =
       status === "success"
         ? "Completed"
-        : runError
-          ? `Failed: ${errorMessage(runError)}`
+        : terminalError
+          ? `Failed: ${errorMessage(terminalError)}`
           : `Failed: ${resultSubtype ?? "unknown"}`;
     await fireHook(
       hooks,
@@ -300,7 +310,7 @@ export class Task {
       cwd
     );
 
-    if (runError) throw runError;
+    if (terminalError) throw terminalError;
   }
 }
 

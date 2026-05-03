@@ -3,13 +3,13 @@ description: Implement, modify, or refactor code in the Burrow codebase
 when: User asks to implement add build write create modify refactor extend feature
 type: CodeWrite
 agents: [implementer]
-skills: [run-typecheck]
+skills: [verify-loop]
 ---
 
 ## Goal
 
 Land a focused code change in Burrow that fulfills the user's request without
-expanding scope.
+expanding scope, then ship it as a pull request.
 
 ## Working environment
 
@@ -23,9 +23,13 @@ checked-out tree. Before starting:
    (`git worktree add ../.burrow-worktrees/<slug> -b <branch> origin/<default-branch>`).
 3. All edits, builds, and the eventual commit happen inside that worktree.
 
-## Steps
+## Flow
+
+This intent inherits the four-phase Red → Green → Verify → Ship flow defined
+by the built-in `CodeWrite` intent. The Burrow-specific notes:
 
 1. Read the relevant existing files before editing.
 2. Prefer editing existing files over creating new ones.
 3. Keep the diff small and self-contained.
-4. Run `bun run typecheck` before reporting done.
+4. Run the `verify-loop` skill before reporting done. Do not invoke a
+   project-specific command directly here — `verify-loop` defines what to run.

@@ -72,6 +72,25 @@ Land a focused code change that fulfills the user's request without expanding sc
 3. Keep the diff small and self-contained.
 `;
 
+const VERIFY_LOOP_SKILL_MD = `---
+description: Verify loop for this project
+---
+
+Replace this body with the command(s) that should pass before any change is
+considered done. The verify loop is language- and stack-agnostic — Burrow's
+built-in implementation intents call this skill instead of any specific tool.
+
+Examples:
+
+- TypeScript: \`bun run typecheck && bun test\`
+- Python: \`pytest && ruff check .\`
+- Go: \`go vet ./... && go test ./...\`
+- Make-based: \`make check\`
+
+Treat any non-zero exit as a blocker. Fix and re-run the full loop until it
+passes cleanly.
+`;
+
 const DOCKERFILE = `FROM oven/bun:alpine
 
 RUN apk add --no-cache git ca-certificates openssh-client github-cli
@@ -113,6 +132,7 @@ function projectScaffold(cwd: string): Scaffold {
       { rel: "system-prompt.md", content: SYSTEM_PROMPT_MD },
       { rel: "memory.md", content: MEMORY_MD },
       { rel: "intents/code-write.md", content: SAMPLE_INTENT_MD },
+      { rel: "skills/verify-loop.md", content: VERIFY_LOOP_SKILL_MD },
       { rel: "Dockerfile", content: DOCKERFILE },
       { rel: ".gitignore", content: PROJECT_GITIGNORE },
     ],

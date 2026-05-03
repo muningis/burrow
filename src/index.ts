@@ -12,7 +12,14 @@ export type {
   LoadedResource,
   ResolvedIntent,
 } from "./intents.js";
-export { burrowCacheDir, defaultScopes, installedScopes, userBurrowDir } from "./intents.js";
+export {
+  burrowCacheDir,
+  claudeProjectDir,
+  defaultScopes,
+  installedScopes,
+  userBurrowDir,
+  userClaudeDir,
+} from "./intents.js";
 export { installBundle, listBundles, uninstallBundle } from "./install.js";
 export type { InstalledBundle } from "./install.js";
 

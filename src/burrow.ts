@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { randomUUID } from "crypto";
 import { join } from "path";
 import type { AgentProvider, AgentSummary } from "./agents/agent.js";
 import type { SandboxProvider, SandboxSummary } from "./sandbox/sandbox.js";
@@ -126,7 +127,7 @@ function recordTask(burrowDir: string, intent: Intent): void {
   if (!existsSync(tasksDir)) mkdirSync(tasksDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const slug = slugify(intent.prompt) || "task";
-  const file = join(tasksDir, `${ts}-${slug}.json`);
+  const file = join(tasksDir, `${ts}-${slug}-${randomUUID()}.json`);
   const resolved = intent.resolved
     ? {
         name: intent.resolved.name,
@@ -164,7 +165,7 @@ export class Task {
     const burrowDir =
       this.config.burrowDir ??
       (this.config.cwd ? join(this.config.cwd, ".burrow") : undefined);
-    if (burrowDir && existsSync(burrowDir)) {
+    if (burrowDir) {
       try {
         recordTask(burrowDir, this.intent);
       } catch {

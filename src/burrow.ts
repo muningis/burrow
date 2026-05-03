@@ -281,8 +281,9 @@ export class Task {
       }
     }
 
-    const terminalError = runError ?? stopError;
-    const status: "success" | "error" = terminalError
+    const hasTerminalError = runError !== undefined || stopError !== undefined;
+    const terminalError = runError !== undefined ? runError : stopError;
+    const status: "success" | "error" = hasTerminalError
       ? "error"
       : resultSubtype && resultSubtype !== "success"
         ? "error"
@@ -292,7 +293,7 @@ export class Task {
     const summary =
       status === "success"
         ? "Completed"
-        : terminalError
+        : hasTerminalError
           ? `Failed: ${errorMessage(terminalError)}`
           : `Failed: ${resultSubtype ?? "unknown"}`;
     await fireHook(
@@ -310,7 +311,7 @@ export class Task {
       cwd
     );
 
-    if (terminalError) throw terminalError;
+    if (hasTerminalError) throw terminalError;
   }
 }
 

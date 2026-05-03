@@ -145,20 +145,29 @@ export async function watchPr(
 
     if (snapshot.state === "MERGED" || snapshot.state === "CLOSED") break;
     if (snapshot.reviewDecision === "APPROVED" && snapshot.unresolvedIds.size === 0) break;
-    if (Date.now() - lastActivityAt > QUIET_MS) break;
 
+    const now = Date.now();
     const newIds = [...snapshot.allIds].filter((id) => !seenIds.has(id));
     if (newIds.length > 0) {
-      lastActivityAt = Date.now();
+      lastActivityAt = now;
       for (const id of snapshot.allIds) seenIds.add(id);
     }
+    if (now - lastActivityAt > QUIET_MS) break;
 
     const newUnresolved = newIds.filter((id) => snapshot.unresolvedIds.has(id));
     if (newUnresolved.length > 0) {
       process.stderr.write(`\n${chalk.bold(chalk.cyan("● Fix PR comments"))}\n`);
       const fixIntent = burrow.intent(`Fix unresolved review comments in PR #${prNumber}`);
-      for await (const msg of burrow.task(fixIntent).run()) {
-        onMessage(msg);
+      try {
+        for await (const msg of burrow.task(fixIntent).run()) {
+          onMessage(msg);
+        }
+      } catch (err) {
+        process.stderr.write(
+          `  ${chalk.dim(
+            `Watch: fix run failed — continuing (${err instanceof Error ? err.message : String(err)})`
+          )}\n`
+        );
       }
     }
   }

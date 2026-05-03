@@ -388,26 +388,30 @@ async function main(): Promise<void> {
       if (msg.subtype === "success") {
         process.stderr.write(`${green("✓")} ${bold("Done")}${cost}\n`);
         if (shouldWatch && intent.inferred.git) {
-          await watchPr(b as unknown as Burrow, cwd, (watchMsg) => {
-            const wm = watchMsg as typeof msg;
-            if (wm.type === "assistant" && wm.message?.content) {
-              for (const block of wm.message.content) {
-                if (block.type === "tool_use" && block.name) {
-                  const detail = formatTool(block.name, (block.input ?? {}) as Record<string, unknown>);
-                  const cat = toolCategory[block.name] ?? "other";
-                  const head = categoryColor[cat](`${categoryIcon[cat]} ${block.name}`);
-                  process.stderr.write(`  ${detail ? `${head}  ${dim(detail)}` : head}\n`);
+          try {
+            await watchPr(b as unknown as Burrow, cwd, (watchMsg) => {
+              const wm = watchMsg as typeof msg;
+              if (wm.type === "assistant" && wm.message?.content) {
+                for (const block of wm.message.content) {
+                  if (block.type === "tool_use" && block.name) {
+                    const detail = formatTool(block.name, (block.input ?? {}) as Record<string, unknown>);
+                    const cat = toolCategory[block.name] ?? "other";
+                    const head = categoryColor[cat](`${categoryIcon[cat]} ${block.name}`);
+                    process.stderr.write(`  ${detail ? `${head}  ${dim(detail)}` : head}\n`);
+                  }
+                }
+              } else if (wm.type === "result") {
+                const wcost = wm.total_cost_usd != null ? dim(` ($${wm.total_cost_usd.toFixed(4)})`) : "";
+                if (wm.subtype === "success") {
+                  process.stderr.write(`${green("✓")} ${bold("Done")}${wcost}\n`);
+                } else {
+                  process.stderr.write(`${red("✗")} ${bold(`Failed: ${wm.subtype}`)}${wcost}\n`);
                 }
               }
-            } else if (wm.type === "result") {
-              const wcost = wm.total_cost_usd != null ? dim(` ($${wm.total_cost_usd.toFixed(4)})`) : "";
-              if (wm.subtype === "success") {
-                process.stderr.write(`${green("✓")} ${bold("Done")}${wcost}\n`);
-              } else {
-                process.stderr.write(`${red("✗")} ${bold(`Failed: ${wm.subtype}`)}${wcost}\n`);
-              }
-            }
-          });
+            });
+          } catch (err) {
+            process.stderr.write(`${yellow("!")} ${bold("Watch failed")}: ${err instanceof Error ? err.message : String(err)}\n`);
+          }
         }
       } else {
         process.stderr.write(`${red("✗")} ${bold(`Failed: ${msg.subtype}`)}${cost}\n`);

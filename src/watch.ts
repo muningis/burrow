@@ -139,6 +139,7 @@ export async function watchPr(
     try {
       snapshot = fetchPrSnapshot(prNumber, owner, name, cwd);
     } catch {
+      if (Date.now() - lastActivityAt > QUIET_MS) break;
       continue;
     }
 

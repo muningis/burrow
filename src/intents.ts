@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
-import { basename, join } from "path";
+import { basename, dirname, join } from "path";
 
 export type IntentScopeKind = "project" | "user" | "installed";
 
@@ -132,6 +132,14 @@ function pickIntent(prompt: string, intents: IntentFile[]): IntentFile | null {
   return best && best.s > 0 ? best.i : null;
 }
 
+function resourceCandidates(dir: string, kind: "agents" | "skills", name: string): string[] {
+  const root = join(dir, kind);
+  const candidates = [join(root, `${name}.md`)];
+  if (kind === "skills") candidates.push(join(root, name, "SKILL.md"));
+  if (kind === "agents") candidates.push(join(root, name, "AGENT.md"));
+  return candidates;
+}
+
 function loadByName(
   scopes: IntentScope[],
   kind: "agents" | "skills",
@@ -139,12 +147,13 @@ function loadByName(
 ): LoadedResource[] {
   const out: LoadedResource[] = [];
   for (const name of names) {
-    for (const s of scopes) {
-      const file = join(s.dir, kind, `${name}.md`);
-      if (!existsSync(file)) continue;
-      const { body } = readMarkdown(file);
-      out.push({ name, body, scope: s.kind });
-      break;
+    outer: for (const s of scopes) {
+      for (const file of resourceCandidates(s.dir, kind, name)) {
+        if (!existsSync(file)) continue;
+        const { body } = readMarkdown(file);
+        out.push({ name, body, scope: s.kind });
+        break outer;
+      }
     }
   }
   return out;
@@ -214,11 +223,25 @@ export function installedScopes(): IntentScope[] {
     .map((dir) => ({ kind: "installed" as const, dir }));
 }
 
+export function claudeProjectDir(burrowDir: string): string {
+  return join(dirname(burrowDir), ".claude");
+}
+
+export function userClaudeDir(): string {
+  return join(homedir(), ".claude");
+}
+
 export function defaultScopes(projectDir?: string): IntentScope[] {
   const out: IntentScope[] = [];
   if (projectDir && existsSync(projectDir)) out.push({ kind: "project", dir: projectDir });
+  if (projectDir) {
+    const claudeProject = claudeProjectDir(projectDir);
+    if (existsSync(claudeProject)) out.push({ kind: "project", dir: claudeProject });
+  }
   const u = userBurrowDir();
   if (existsSync(u)) out.push({ kind: "user", dir: u });
+  const uc = userClaudeDir();
+  if (existsSync(uc)) out.push({ kind: "user", dir: uc });
   out.push(...installedScopes());
   return out;
 }

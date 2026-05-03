@@ -84,9 +84,9 @@ function sshAgentSocket(): { source: string; target: string } | null {
   if (process.platform === "darwin") {
     // Docker on macOS runs inside a VM (Docker Desktop or Colima). existsSync
     // would check the host filesystem, but Docker's daemon only sees the VM's
-    // filesystem. DOCKER_DESKTOP_SSH_SOCK is exposed inside the VM by Docker
-    // Desktop automatically and by Colima when started with --ssh-agent. macOS's
-    // own SSH_AUTH_SOCK (a launchd socket) is host-only and not bind-mountable.
+    // filesystem. Return DOCKER_DESKTOP_SSH_SOCK unconditionally; a missing
+    // socket produces a "bind source path does not exist" error that the
+    // caller's catch block turns into actionable guidance.
     return { source: DOCKER_DESKTOP_SSH_SOCK, target: DOCKER_DESKTOP_SSH_SOCK };
   }
   const sock = process.env.SSH_AUTH_SOCK;

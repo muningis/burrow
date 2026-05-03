@@ -4,7 +4,7 @@ import os from "os";
 import { spawnSync } from "child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import chalk from "chalk";
-import { runInitCli, runSetupCli } from "./init.js";
+import { runDoctorCli, runInitCli, runSetupCli } from "./init.js";
 import { runInstallCli, runUninstallCli, runBundlesCli } from "./install.js";
 import { userBurrowDir } from "./intents.js";
 
@@ -125,8 +125,9 @@ function printUsage(): void {
   console.error(`Usage:
   burrow "<prompt>"        Run a task in the configured sandbox
   burrow query             Compose a multi-line prompt in $EDITOR (or read from stdin)
-  burrow init [dir]        Scaffold .burrow/ in the current (or given) directory
-  burrow setup             Scaffold ~/.config/burrow/ (global config, intents, agents)
+  burrow init [dir]        Scaffold or update .burrow/ in the current (or given) directory (use --force to overwrite)
+  burrow setup             Scaffold or update ~/.config/burrow/ (use --force to overwrite)
+  burrow doctor            Check for updates to ~/.config/burrow/ (--local for .burrow/, --minimal for yes/no)
   burrow install <path>    Install a bundle from a local path into ~/.cache/burrow/
   burrow uninstall <name>  Remove an installed bundle
   burrow bundles           List installed bundles
@@ -206,7 +207,12 @@ async function main(): Promise<void> {
   }
 
   if (sub === "setup") {
-    runSetupCli();
+    runSetupCli(args.slice(1));
+    return;
+  }
+
+  if (sub === "doctor") {
+    runDoctorCli(args.slice(1));
     return;
   }
 

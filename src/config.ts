@@ -58,13 +58,21 @@ function resolvePath(p: string, baseDir: string): string {
   return isAbsolute(expanded) ? expanded : resolve(baseDir, expanded);
 }
 
+function readTextFile(path: string, file: string, label: string): string {
+  try {
+    return readFileSync(path, "utf-8");
+  } catch (err) {
+    fail(`failed to read ${label}: ${(err as Error).message}`, file);
+  }
+}
+
 function loadAgent(spec: YamlAgent | undefined, file: string): AgentProvider {
   if (!spec || typeof spec !== "object") fail("missing 'agent'", file);
   const { provider, model, ...rest } = spec;
   if (provider !== "claude-code" && provider !== "claudeCode") {
     fail(`unknown agent.provider: ${String(provider)}`, file);
   }
-  if (typeof model !== "string" || !model) {
+  if (typeof model !== "string" || model.trim().length === 0) {
     fail("agent.model must be a non-empty string", file);
   }
   return claudeCode(model, rest as ClaudeCodeOptions);
@@ -81,7 +89,7 @@ function loadSandbox(
     fail(`unknown sandbox.provider: ${String(provider)}`, file);
   }
   const cfg = rest as Partial<DockerSandboxConfig>;
-  if (typeof cfg.imageName !== "string" || !cfg.imageName) {
+  if (typeof cfg.imageName !== "string" || cfg.imageName.trim().length === 0) {
     fail("sandbox.imageName must be a non-empty string", file);
   }
   if (mounts !== undefined && !Array.isArray(mounts)) {
@@ -154,7 +162,7 @@ function loadHooks(raw: unknown, file: string): HooksConfig | undefined {
 
 export function loadBurrowConfig(file: string): BurrowConfig {
   if (!existsSync(file)) fail(`config file not found: ${file}`);
-  const raw = readFileSync(file, "utf-8");
+  const raw = readTextFile(file, file, "config file");
   let data: YamlConfig;
   try {
     data = parseYaml(raw) as YamlConfig;
@@ -190,10 +198,17 @@ export function loadBurrowConfig(file: string): BurrowConfig {
     if (!existsSync(path) || !statSync(path).isFile()) {
       fail(`systemPrompt must reference an existing file: ${path}`, file);
     }
-    systemPrompt = readFileSync(path, "utf-8");
+    systemPrompt = readTextFile(path, file, "systemPrompt file");
   } else if (data.systemPrompt === undefined) {
     const def = resolve(baseDir, "system-prompt.md");
-    systemPrompt = existsSync(def) ? readFileSync(def, "utf-8") : undefined;
+    if (existsSync(def)) {
+      if (!statSync(def).isFile()) {
+        fail(`systemPrompt must reference an existing file: ${def}`, file);
+      }
+      systemPrompt = readTextFile(def, file, "systemPrompt file");
+    } else {
+      systemPrompt = undefined;
+    }
   } else {
     fail("systemPrompt must be a path string, false, or null", file);
   }
@@ -223,6 +238,19 @@ export function loadBurrowConfig(file: string): BurrowConfig {
     }
     if (rawGit.defaultBranch != null && typeof rawGit.defaultBranch !== "string") {
       fail("git.defaultBranch must be a string", file);
+    }
+    if (
+      rawGit.commitStyle === "custom" &&
+      (typeof rawGit.commitTemplate !== "string" ||
+        rawGit.commitTemplate.trim().length === 0)
+    ) {
+      fail('git.commitStyle "custom" requires a non-empty git.commitTemplate', file);
+    }
+    if (
+      typeof rawGit.branchPattern === "string" &&
+      !rawGit.branchPattern.includes("<slug>")
+    ) {
+      fail('git.branchPattern must contain "<slug>"', file);
     }
     git = {
       branchPattern: rawGit.branchPattern as string | undefined,

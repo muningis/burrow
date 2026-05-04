@@ -31,8 +31,8 @@ interface YamlConfig {
   cwd?: unknown;
   burrowDir?: unknown;
   systemPrompt?: string | false | null;
-  git?: GitConfig;
-  watch?: boolean;
+  git?: unknown;
+  watch?: unknown;
   hooks?: unknown;
 }
 
@@ -115,8 +115,11 @@ function loadHookEntry(entry: unknown, event: string, file: string): Hook<HookPa
     ) {
       fail(`hooks.${event}: entry 'args' must be an array of strings`, file);
     }
-    if (obj.cwd !== undefined && typeof obj.cwd !== "string") {
-      fail(`hooks.${event}: entry 'cwd' must be a string`, file);
+    if (
+      obj.cwd !== undefined &&
+      (typeof obj.cwd !== "string" || obj.cwd.trim().length === 0)
+    ) {
+      fail(`hooks.${event}: entry 'cwd' must be a non-empty string`, file);
     }
     return obj;
   }
@@ -185,14 +188,48 @@ export function loadBurrowConfig(file: string): BurrowConfig {
     fail("systemPrompt must be a path string, false, or null", file);
   }
 
+  if (data.watch != null && typeof data.watch !== "boolean") {
+    fail("watch must be a boolean", file);
+  }
+
+  let git: GitConfig | undefined;
+  if (data.git != null) {
+    if (typeof data.git !== "object" || Array.isArray(data.git)) {
+      fail("git must be a mapping", file);
+    }
+    const rawGit = data.git as Record<string, unknown>;
+    if (rawGit.branchPattern != null && typeof rawGit.branchPattern !== "string") {
+      fail("git.branchPattern must be a string", file);
+    }
+    if (
+      rawGit.commitStyle != null &&
+      rawGit.commitStyle !== "conventional" &&
+      rawGit.commitStyle !== "custom"
+    ) {
+      fail('git.commitStyle must be "conventional" or "custom"', file);
+    }
+    if (rawGit.commitTemplate != null && typeof rawGit.commitTemplate !== "string") {
+      fail("git.commitTemplate must be a string", file);
+    }
+    if (rawGit.defaultBranch != null && typeof rawGit.defaultBranch !== "string") {
+      fail("git.defaultBranch must be a string", file);
+    }
+    git = {
+      branchPattern: rawGit.branchPattern as string | undefined,
+      commitStyle: rawGit.commitStyle as GitConfig["commitStyle"],
+      commitTemplate: rawGit.commitTemplate as string | undefined,
+      defaultBranch: rawGit.defaultBranch as string | undefined,
+    };
+  }
+
   return {
     agent,
     sandbox,
     cwd,
     burrowDir,
     systemPrompt,
-    git: data.git,
-    watch: data.watch,
+    git,
+    watch: data.watch as boolean | undefined,
     hooks: loadHooks(data.hooks, file),
   };
 }

@@ -32,7 +32,9 @@ the PR transitions to \`MERGED\` or \`CLOSED\`.
 GitHub poll script template (substitute \`OWNER\`, \`REPO\`, \`NUM\`):
 
 \`\`\`bash
-prev=""
+STATE_FILE=.git/.burrow-watch-seen
+touch "$STATE_FILE"
+prev=$(sort -u "$STATE_FILE" 2>/dev/null)
 QUERY='query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$number){state reviewDecision reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved}}}}}'
 while true; do
   state=""
@@ -73,6 +75,7 @@ while true; do
   if [ -z "$unresolved" ] && [ "$decision" = "APPROVED" ]; then
     echo "READY decision=$decision"
   fi
+  printf '%s\\n' "$unresolved" > "$STATE_FILE"
   prev="$unresolved"
   sleep 30
 done
@@ -86,14 +89,15 @@ terminal sentinel.
 
 - **\`NEW <id>\`** — at least one new unresolved thread exists.
   1. Stop the monitor with \`TaskStop\`.
-  2. Fetch the thread bodies and \`path:line\` locations:
-     \`gh api graphql\` for \`reviewThreads { nodes { isResolved comments { nodes { path line body author { login } } } } }\`
-     (or the GitLab discussion equivalent). Infer from \`isResolved\` which
-     threads still need work — only act on the unresolved ones.
+  2. Fetch each emitted thread by its id so page boundaries do not matter.
+     GitHub: \`gh api graphql\` for \`node(id: THREAD_ID) { ... on PullRequestReviewThread { isResolved comments(first:100) { nodes { path line body author { login } } } } }\`
+     (or paginate \`reviewThreads\` until that id is found; same idea for
+     GitLab). Only act on unresolved threads.
   3. Apply the smallest fix per thread. Read surrounding code first.
   4. Run the project's verify-loop until it passes.
   5. Commit and push to the existing PR/MR branch. Do not open a new PR.
-  6. Restart the monitor and continue waiting.
+  6. Restart the monitor with the same seen-thread baseline (the state file
+     persists between restarts) and continue waiting.
 
 - **\`READY\`** — PR is approved with zero unresolved threads. Merge it:
   - GitHub: \`gh pr merge --squash\` (match the project's merge convention —

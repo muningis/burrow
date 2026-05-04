@@ -127,7 +127,8 @@ function printUsage(): void {
   console.error(`Usage:
   burrow "<prompt>"        Run a task in the configured sandbox
   burrow query             Compose a multi-line prompt in $EDITOR (or read from stdin)
-  burrow --watch           Stay in the same agent session after the initial task and watch the PR for new review comments, auto-fix them, and merge when approved
+  burrow "<prompt>" --watch
+                           Stay in the same agent session after the initial task and watch the PR for new review comments, auto-fix them, and merge when approved
   burrow init [dir]        Scaffold or update .burrow/ in the current (or given) directory (use --force to overwrite)
   burrow setup             Scaffold or update ~/.config/burrow/ (use --force to overwrite)
   burrow doctor            Check for updates to ~/.config/burrow/ (--local for .burrow/, --minimal for yes/no)
@@ -306,7 +307,7 @@ async function main(): Promise<void> {
   const intent: ResolvedIntent =
     shouldWatch && baseIntent.inferred.git
       ? (new Intent(
-          `${prompt}\n\n${watchInstructions()}`,
+          `${baseIntent.prompt}\n\n${watchInstructions()}`,
           baseIntent.inferred as never,
           baseIntent.resolved as never
         ) as unknown as ResolvedIntent)

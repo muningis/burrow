@@ -33,14 +33,34 @@ GitHub poll script template (substitute \`OWNER\`, \`REPO\`, \`NUM\`):
 
 \`\`\`bash
 prev=""
+QUERY='query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$number){state reviewDecision reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved}}}}}'
 while true; do
-  resp=$(gh api graphql \\
-    -F owner=OWNER -F name=REPO -F number=NUM \\
-    -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){state reviewDecision reviewThreads(first:100){nodes{id isResolved}}}}}' \\
-    2>/dev/null) || { sleep 30; continue; }
-  state=$(echo "$resp" | jq -r '.data.repository.pullRequest.state')
-  decision=$(echo "$resp" | jq -r '.data.repository.pullRequest.reviewDecision // "PENDING"')
-  unresolved=$(echo "$resp" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | .id' | sort -u)
+  state=""
+  decision="PENDING"
+  unresolved=""
+  cursor=""
+  fail=0
+  # Page through all reviewThreads before deciding READY/NEW.
+  while :; do
+    if [ -n "$cursor" ]; then
+      page=$(gh api graphql \\
+        -F owner=OWNER -F name=REPO -F number=NUM -F after="$cursor" \\
+        -f query="$QUERY" 2>/dev/null) || { fail=1; break; }
+    else
+      page=$(gh api graphql \\
+        -F owner=OWNER -F name=REPO -F number=NUM \\
+        -f query="$QUERY" 2>/dev/null) || { fail=1; break; }
+    fi
+    state=$(echo "$page" | jq -r '.data.repository.pullRequest.state')
+    decision=$(echo "$page" | jq -r '.data.repository.pullRequest.reviewDecision // "PENDING"')
+    page_ids=$(echo "$page" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | .id')
+    [ -n "$page_ids" ] && unresolved=$(printf '%s\\n%s' "$unresolved" "$page_ids")
+    has_next=$(echo "$page" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+    [ "$has_next" = "true" ] || break
+    cursor=$(echo "$page" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  done
+  [ "$fail" = "1" ] && { sleep 30; continue; }
+  unresolved=$(echo "$unresolved" | sed '/^$/d' | sort -u)
   if [ -n "$unresolved" ]; then
     while IFS= read -r id; do
       grep -qxF "$id" <<< "$prev" || echo "NEW $id"

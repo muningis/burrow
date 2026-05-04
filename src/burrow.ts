@@ -242,19 +242,27 @@ export class Task {
         systemPrompt,
         env: ctx.env,
       })) {
-        const m = message as {
-          type?: string;
-          subtype?: string;
-          total_cost_usd?: number;
-          message?: { content?: Array<{ type: string; text?: string }> };
-        };
-        if (m.type === "result") {
-          resultSubtype = m.subtype;
-          resultCost = m.total_cost_usd;
-        } else if (m.type === "assistant" && m.message?.content) {
-          for (const block of m.message.content) {
-            if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-              finalMessage = block.text;
+        if (message && typeof message === "object") {
+          const m = message as {
+            type?: string;
+            subtype?: string;
+            total_cost_usd?: number;
+            message?: { content?: unknown };
+          };
+          if (m.type === "result") {
+            resultSubtype = m.subtype;
+            resultCost = m.total_cost_usd;
+          } else if (m.type === "assistant" && Array.isArray(m.message?.content)) {
+            for (const block of m.message.content) {
+              if (
+                block &&
+                typeof block === "object" &&
+                (block as { type?: unknown }).type === "text" &&
+                typeof (block as { text?: unknown }).text === "string" &&
+                (block as { text: string }).text.trim()
+              ) {
+                finalMessage = (block as { text: string }).text;
+              }
             }
           }
         }

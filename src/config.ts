@@ -66,6 +66,18 @@ function readTextFile(path: string, file: string, label: string): string {
   }
 }
 
+function assertIsFile(path: string, file: string, label: string): void {
+  let isFile: boolean;
+  try {
+    isFile = existsSync(path) && statSync(path).isFile();
+  } catch (err) {
+    fail(`failed to stat ${label}: ${(err as Error).message}`, file);
+  }
+  if (!isFile) {
+    fail(`${label} must reference an existing file: ${path}`, file);
+  }
+}
+
 function loadAgent(spec: YamlAgent | undefined, file: string): AgentProvider {
   if (!spec || typeof spec !== "object") fail("missing 'agent'", file);
   const { provider, model, ...rest } = spec;
@@ -98,8 +110,16 @@ function loadSandbox(
   if (Array.isArray(mounts)) {
     cfg.mounts = mounts.map((m) => {
       const entry = m as { source?: unknown; target?: unknown };
-      if (typeof entry.source !== "string" || typeof entry.target !== "string") {
-        fail("sandbox.mounts entries must have string 'source' and 'target'", file);
+      if (
+        typeof entry.source !== "string" ||
+        entry.source.trim().length === 0 ||
+        typeof entry.target !== "string" ||
+        entry.target.trim().length === 0
+      ) {
+        fail(
+          "sandbox.mounts entries must have non-empty string 'source' and 'target'",
+          file
+        );
       }
       return {
         source: resolvePath(entry.source, baseDir),
@@ -195,16 +215,12 @@ export function loadBurrowConfig(file: string): BurrowConfig {
       fail("systemPrompt must be a non-empty path string, false, or null", file);
     }
     const path = resolvePath(data.systemPrompt, baseDir);
-    if (!existsSync(path) || !statSync(path).isFile()) {
-      fail(`systemPrompt must reference an existing file: ${path}`, file);
-    }
+    assertIsFile(path, file, "systemPrompt");
     systemPrompt = readTextFile(path, file, "systemPrompt file");
   } else if (data.systemPrompt === undefined) {
     const def = resolve(baseDir, "system-prompt.md");
     if (existsSync(def)) {
-      if (!statSync(def).isFile()) {
-        fail(`systemPrompt must reference an existing file: ${def}`, file);
-      }
+      assertIsFile(def, file, "systemPrompt");
       systemPrompt = readTextFile(def, file, "systemPrompt file");
     } else {
       systemPrompt = undefined;

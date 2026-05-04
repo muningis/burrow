@@ -1,183 +1,95 @@
-import { execFileSync } from "child_process";
-import chalk from "chalk";
-import type { Burrow } from "./burrow.js";
+// When `--watch` is set, this block is appended to the agent prompt so the
+// entire watch lifecycle runs inside a single agent session — no external
+// polling loop. The agent uses the harness `Monitor` tool to wait for new
+// unresolved review comments, fixes them in place, then resumes monitoring;
+// when the PR is approved with no unresolved threads it merges and exits.
 
-const POLL_MS = 30_000;
-const QUIET_MS = 10 * 60 * 1000;
-const GH_TIMEOUT_MS = 15_000;
+const WATCH_INSTRUCTIONS = `# Watch Mode
 
-// Omit $after default so we only pass it when paginating
-const THREADS_QUERY = `
-  query($owner: String!, $name: String!, $number: Int!, $after: String) {
-    repository(owner: $owner, name: $name) {
-      pullRequest(number: $number) {
-        state
-        reviewDecision
-        reviewThreads(first: 100, after: $after) {
-          pageInfo { hasNextPage endCursor }
-          nodes { id isResolved }
-        }
-      }
-    }
-  }
-`.trim();
+After completing the initial task and pushing your work to an open PR/MR, do
+not exit. Stay in this same session and run the watch loop below until the PR
+is merged or closed. Do not ask for confirmation between iterations — watch
+mode is autonomous.
 
-interface GraphQLResult {
-  data: {
-    repository: {
-      pullRequest: {
-        state: string;
-        reviewDecision: string | null;
-        reviewThreads: {
-          pageInfo: { hasNextPage: boolean; endCursor: string | null };
-          nodes: Array<{ id: string; isResolved: boolean }>;
-        };
-      };
-    };
-  };
-}
+## 1. Resolve the PR/MR
 
-function ghJson<T>(args: string[], cwd: string): T {
-  const out = execFileSync("gh", args, { cwd, encoding: "utf-8", timeout: GH_TIMEOUT_MS });
-  return JSON.parse(out) as T;
-}
+Detect the platform and the number for the current branch:
 
-function fetchSessionPrNumber(cwd: string): number | null {
-  try {
-    const { number } = ghJson<{ number: number }>(["pr", "view", "--json", "number"], cwd);
-    return number;
-  } catch {
-    return null;
-  }
-}
+- GitHub: \`gh pr view --json number,baseRefName,headRefName,url\`
+- GitLab: \`glab mr view --json iid,source_branch,target_branch,web_url\`
 
-function fetchRepoInfo(cwd: string): { owner: string; name: string } {
-  const result = ghJson<{ owner: { login: string }; name: string }>(
-    ["repo", "view", "--json", "owner,name"],
-    cwd
-  );
-  return { owner: result.owner.login, name: result.name };
-}
+If no PR/MR exists for the current branch, exit watch mode — there is nothing
+to watch.
 
-interface PrSnapshot {
-  state: string;
-  reviewDecision: string | null;
-  allIds: Set<string>;
-  unresolvedIds: Set<string>;
-}
+## 2. Start a persistent Monitor
 
-function fetchPrSnapshot(prNumber: number, owner: string, repo: string, cwd: string): PrSnapshot {
-  const allIds = new Set<string>();
-  const unresolvedIds = new Set<string>();
-  let after: string | null = null;
-  let state = "OPEN";
-  let reviewDecision: string | null = null;
+Use the \`Monitor\` tool with \`persistent: true\` and a poll interval of 30s.
+Each stdout line is a notification, so emit only the lines you would act on:
+\`NEW <thread-id>\` for each newly-appeared unresolved thread, \`READY\` when
+the PR is approved with zero unresolved threads, and \`DONE state=...\` when
+the PR transitions to \`MERGED\` or \`CLOSED\`.
 
-  for (;;) {
-    const vars: string[] = [
-      "-f", `query=${THREADS_QUERY}`,
-      "-F", `owner=${owner}`,
-      "-F", `name=${repo}`,
-      "-F", `number=${prNumber}`,
-    ];
-    if (after) vars.push("-F", `after=${after}`);
-    const result = ghJson<GraphQLResult>(["api", "graphql", ...vars], cwd);
-    const pr = result.data.repository.pullRequest;
-    state = pr.state;
-    reviewDecision = pr.reviewDecision;
+GitHub poll script template (substitute \`OWNER\`, \`REPO\`, \`NUM\`):
 
-    for (const t of pr.reviewThreads.nodes) {
-      allIds.add(t.id);
-      if (!t.isResolved) unresolvedIds.add(t.id);
-    }
+\`\`\`bash
+prev=""
+while true; do
+  resp=$(gh api graphql \\
+    -F owner=OWNER -F name=REPO -F number=NUM \\
+    -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){state reviewDecision reviewThreads(first:100){nodes{id isResolved}}}}}' \\
+    2>/dev/null) || { sleep 30; continue; }
+  state=$(echo "$resp" | jq -r '.data.repository.pullRequest.state')
+  decision=$(echo "$resp" | jq -r '.data.repository.pullRequest.reviewDecision // "PENDING"')
+  unresolved=$(echo "$resp" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | .id' | sort -u)
+  if [ -n "$unresolved" ]; then
+    while IFS= read -r id; do
+      grep -qxF "$id" <<< "$prev" || echo "NEW $id"
+    done <<< "$unresolved"
+  fi
+  if [ "$state" = "MERGED" ] || [ "$state" = "CLOSED" ]; then
+    echo "DONE state=$state"
+    break
+  fi
+  if [ -z "$unresolved" ] && [ "$decision" = "APPROVED" ]; then
+    echo "READY decision=$decision"
+  fi
+  prev="$unresolved"
+  sleep 30
+done
+\`\`\`
 
-    if (!pr.reviewThreads.pageInfo.hasNextPage) break;
-    after = pr.reviewThreads.pageInfo.endCursor;
-  }
+GitLab equivalent: \`glab api projects/:id/merge_requests/<iid>/discussions\`,
+filter \`resolvable && !resolved\`, plus \`glab mr view --json state\` for the
+terminal sentinel.
 
-  return { state, reviewDecision, allIds, unresolvedIds };
-}
+## 3. React to events
 
-export async function watchPr(
-  burrow: Burrow,
-  cwd: string,
-  onMessage: (msg: unknown) => void
-): Promise<void> {
-  const prNumber = fetchSessionPrNumber(cwd);
-  if (prNumber == null) {
-    process.stderr.write(`  ${chalk.dim("Watch: no PR found on current branch — skipping")}\n`);
-    return;
-  }
+- **\`NEW <id>\`** — at least one new unresolved thread exists.
+  1. Stop the monitor with \`TaskStop\`.
+  2. Fetch the thread bodies and \`path:line\` locations:
+     \`gh api graphql\` for \`reviewThreads { nodes { isResolved comments { nodes { path line body author { login } } } } }\`
+     (or the GitLab discussion equivalent). Infer from \`isResolved\` which
+     threads still need work — only act on the unresolved ones.
+  3. Apply the smallest fix per thread. Read surrounding code first.
+  4. Run the project's verify-loop until it passes.
+  5. Commit and push to the existing PR/MR branch. Do not open a new PR.
+  6. Restart the monitor and continue waiting.
 
-  let repoInfo: { owner: string; name: string };
-  try {
-    repoInfo = fetchRepoInfo(cwd);
-  } catch {
-    process.stderr.write(`  ${chalk.dim("Watch: unable to detect repo info — skipping")}\n`);
-    return;
-  }
+- **\`READY\`** — PR is approved with zero unresolved threads. Merge it:
+  - GitHub: \`gh pr merge --squash\` (match the project's merge convention —
+    \`--rebase\` or \`--merge\` if that's what the repo uses).
+  - GitLab: \`glab mr merge\`.
+  After the merge succeeds, the next monitor tick will emit \`DONE\` — let it.
 
-  const { owner, name } = repoInfo;
+- **\`DONE state=MERGED\`** or **\`DONE state=CLOSED\`** — exit watch mode and
+  finish the session.
 
-  // Snapshot all thread IDs that exist at session start — only IDs new since here trigger fixes.
-  // A transient failure here must not abort the watcher; fall back to empty so the retry loop runs.
-  const seenIds = new Set<string>();
-  const pendingFixIds = new Set<string>();
-  try {
-    const initial = fetchPrSnapshot(prNumber, owner, name, cwd);
-    for (const id of initial.allIds) seenIds.add(id);
-  } catch {
-    process.stderr.write(`  ${chalk.dim("Watch: initial snapshot failed — starting from empty")}\n`);
-  }
+## 4. Stop cleanly
 
-  process.stderr.write(`  ${chalk.dim(`Watching PR #${prNumber} for new review comments…`)}\n`);
+Always call \`TaskStop\` on the monitor before exiting. Do not leave
+background polls running.
+`;
 
-  let lastActivityAt = Date.now();
-
-  for (;;) {
-    await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS));
-
-    let snapshot: PrSnapshot;
-    try {
-      snapshot = fetchPrSnapshot(prNumber, owner, name, cwd);
-    } catch {
-      if (Date.now() - lastActivityAt > QUIET_MS) break;
-      continue;
-    }
-
-    if (snapshot.state === "MERGED" || snapshot.state === "CLOSED") break;
-    if (snapshot.reviewDecision === "APPROVED" && snapshot.unresolvedIds.size === 0) break;
-
-    const now = Date.now();
-    const newIds = [...snapshot.allIds].filter((id) => !seenIds.has(id));
-    if (newIds.length > 0) {
-      lastActivityAt = now;
-      for (const id of newIds) {
-        seenIds.add(id);
-        if (snapshot.unresolvedIds.has(id)) pendingFixIds.add(id);
-      }
-    }
-    if (now - lastActivityAt > QUIET_MS) break;
-
-    for (const id of [...pendingFixIds]) {
-      if (!snapshot.unresolvedIds.has(id)) pendingFixIds.delete(id);
-    }
-
-    if (pendingFixIds.size > 0) {
-      process.stderr.write(`\n${chalk.bold(chalk.cyan("● Fix PR comments"))}\n`);
-      const fixIntent = burrow.intent(`Fix unresolved review comments in PR #${prNumber}`);
-      try {
-        for await (const msg of burrow.task(fixIntent).run()) {
-          onMessage(msg);
-        }
-        pendingFixIds.clear();
-      } catch (err) {
-        process.stderr.write(
-          `  ${chalk.dim(
-            `Watch: fix run failed — continuing (${err instanceof Error ? err.message : String(err)})`
-          )}\n`
-        );
-      }
-    }
-  }
+export function watchInstructions(): string {
+  return WATCH_INSTRUCTIONS;
 }

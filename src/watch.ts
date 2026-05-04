@@ -32,7 +32,9 @@ the PR transitions to \`MERGED\` or \`CLOSED\`.
 GitHub poll script template (substitute \`OWNER\`, \`REPO\`, \`NUM\`):
 
 \`\`\`bash
-STATE_FILE=.git/.burrow-watch-seen
+GIT_DIR=$(git rev-parse --git-common-dir 2>/dev/null || git rev-parse --git-dir 2>/dev/null || echo .git)
+STATE_FILE="$GIT_DIR/.burrow-watch-seen"
+mkdir -p "$(dirname "$STATE_FILE")"
 touch "$STATE_FILE"
 prev=$(sort -u "$STATE_FILE" 2>/dev/null)
 QUERY='query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$number){state reviewDecision reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved}}}}}'

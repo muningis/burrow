@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
 import { parse as parseYaml } from "yaml";
@@ -103,10 +103,15 @@ function loadSandbox(
 }
 
 function loadHookEntry(entry: unknown, event: string, file: string): Hook<HookPayload> {
-  if (typeof entry === "string") return entry;
+  if (typeof entry === "string") {
+    if (entry.trim().length === 0) {
+      fail(`hooks.${event}: entry must be a non-empty shell string`, file);
+    }
+    return entry;
+  }
   if (entry && typeof entry === "object" && "command" in entry) {
     const obj = entry as HookCommand;
-    if (typeof obj.command !== "string" || !obj.command) {
+    if (typeof obj.command !== "string" || obj.command.trim().length === 0) {
       fail(`hooks.${event}: entry 'command' must be a non-empty string`, file);
     }
     if (
@@ -178,8 +183,13 @@ export function loadBurrowConfig(file: string): BurrowConfig {
   if (data.systemPrompt === false || data.systemPrompt === null) {
     systemPrompt = undefined;
   } else if (typeof data.systemPrompt === "string") {
+    if (data.systemPrompt.trim().length === 0) {
+      fail("systemPrompt must be a non-empty path string, false, or null", file);
+    }
     const path = resolvePath(data.systemPrompt, baseDir);
-    if (!existsSync(path)) fail(`systemPrompt file not found: ${path}`, file);
+    if (!existsSync(path) || !statSync(path).isFile()) {
+      fail(`systemPrompt must reference an existing file: ${path}`, file);
+    }
     systemPrompt = readFileSync(path, "utf-8");
   } else if (data.systemPrompt === undefined) {
     const def = resolve(baseDir, "system-prompt.md");

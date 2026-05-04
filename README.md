@@ -18,7 +18,7 @@ The full layout looks like this:
 
 ```
 .burrow/
-├── config.ts              # Burrow config (required)
+├── config.yaml            # Burrow config (required)
 ├── system-prompt.md       # base system prompt (required)
 ├── intents/               # named tasks Burrow can run
 │   ├── ship-feature.md    #   single-file intent
@@ -31,7 +31,7 @@ The full layout looks like this:
     └── verify-loop.md
 ```
 
-Only `config.ts` and `system-prompt.md` are required. `intents/`, `agents/`, and `skills/` are picked up automatically when present.
+Only `config.yaml` and `system-prompt.md` are required. `intents/`, `agents/`, and `skills/` are picked up automatically when present.
 
 Burrow also ships a small set of **built-in implementation intents** —
 `CodeWrite`, `FixPr`, `IntentCreate` — which are always discoverable even
@@ -48,22 +48,22 @@ override the built-ins by name.
 You are an expert developer working on <project>. Keep changes minimal and focused.
 ```
 
-**`.burrow/config.ts`** — the Burrow config:
+**`.burrow/config.yaml`** — the Burrow config:
 
-```typescript
-import { readFileSync } from "fs";
-import { join } from "path";
-import { Burrow, claudeCode, docker } from "burrow";
+```yaml
+agent:
+  provider: claude-code
+  model: claude-opus-4-7
 
-const systemPrompt = readFileSync(join(import.meta.dir, "system-prompt.md"), "utf-8");
+sandbox:
+  provider: docker
+  imageName: burrow:local
 
-export default new Burrow({
-  agent: claudeCode("claude-opus-4-7"),
-  sandbox: docker({ imageName: "burrow:local" }),
-  cwd: join(import.meta.dir, ".."),
-  systemPrompt,
-});
+cwd: ..
 ```
+
+`systemPrompt` defaults to the `system-prompt.md` next to this file. Paths are
+resolved relative to the YAML file's directory.
 
 #### Intents
 
@@ -164,7 +164,7 @@ cat prompt.md | burrow query
 ```
 
 Burrow:
-1. Loads `.burrow/config.ts` from the current directory
+1. Loads `.burrow/config.yaml` from the current directory (or the global one at `~/.config/burrow/config.yaml`)
 2. Starts a Docker container from `burrow:local`
 3. Runs the Claude Code agent with the configured prompt, model, and system prompt
 4. Streams output to stdout (tool use to stderr)
@@ -176,39 +176,40 @@ can push and open PRs, see [docs/setup.md](docs/setup.md).
 
 ## Configuration reference
 
-```typescript
-new Burrow({
-  agent: claudeCode("claude-opus-4-7", {
-    effort: "high",          // low | medium | high | xhigh | max
-    maxTurns: 50,
-    allowedTools: ["Read", "Edit", "Bash"],
-    permissionMode: "acceptEdits",
-  }),
-  sandbox: docker({
-    imageName: "burrow:local",
-    mounts: [
-      { source: "./data", target: "/home/raccoon/workspace/data" },
-    ],
-    env: { DEBUG: true },
-    network: {
-      mode: "bridge",                       // "none" | "bridge" | "host" | <custom network>
-      allowedHosts: [                       // resolved via --add-host
-        { host: "registry.npmjs.org", ip: "104.16.0.1" },
-        "api.internal:10.0.0.5",
-      ],
-      dns: ["1.1.1.1"],
-    },
-    ssh: true,                              // forward host SSH agent for git push
-  }),
-  cwd: "/path/to/project",
-  systemPrompt: "...",
-  git: {
-    branchPattern: "feature/<slug>",  // agent creates a branch before making changes
-    commitStyle: "conventional",      // "conventional" | "custom"
-    commitTemplate: "...",            // used when commitStyle is "custom"
-    defaultBranch: "main",            // base branch for gh pr create (default: "main")
-  },
-});
+```yaml
+agent:
+  provider: claude-code
+  model: claude-opus-4-7
+  effort: high                  # low | medium | high | xhigh | max
+  maxTurns: 50
+  allowedTools: [Read, Edit, Bash]
+  permissionMode: acceptEdits
+
+sandbox:
+  provider: docker
+  imageName: burrow:local
+  mounts:
+    - source: ./data
+      target: /home/raccoon/workspace/data
+  env:
+    DEBUG: "true"
+  network:
+    mode: bridge                # "none" | "bridge" | "host" | <custom network>
+    allowedHosts:               # resolved via --add-host
+      - host: registry.npmjs.org
+        ip: 104.16.0.1
+      - "api.internal:10.0.0.5"
+    dns: ["1.1.1.1"]
+  ssh: true                     # forward host SSH agent for git push
+
+cwd: /path/to/project
+systemPrompt: system-prompt.md  # path relative to the YAML file's dir; or false to disable
+
+git:
+  branchPattern: feature/<slug> # agent creates a branch before making changes
+  commitStyle: conventional     # "conventional" | "custom"
+  commitTemplate: "..."         # used when commitStyle is "custom"
+  defaultBranch: main           # base branch for gh pr create (default: "main")
 ```
 
 ### Git workflow
@@ -225,12 +226,13 @@ When `git` is configured, Burrow injects a **Git Workflow** section into the age
 
 `git push` (over SSH) and `gh pr create` need credentials inside the container. Burrow handles this via two sandbox knobs:
 
-```typescript
-sandbox: docker({
-  imageName: "burrow:local",
-  ssh: true,                                       // forward host SSH agent + known_hosts
-  env: { GH_TOKEN: process.env.GH_TOKEN ?? "" },   // pass through gh auth token
-}),
+```yaml
+sandbox:
+  provider: docker
+  imageName: burrow:local
+  ssh: true                # forward host SSH agent + known_hosts
+  env:
+    GH_TOKEN: "<your-token>"  # pass through gh auth token; substitute via your wrapper
 ```
 
 - **`ssh: true`** mounts the host's SSH agent socket and `~/.ssh/known_hosts` into the container so `git@github.com:…` pushes succeed using your existing host keys. On macOS it uses `/run/host-services/ssh-auth.sock`, which Docker Desktop exposes automatically and Colima exposes when started with `colima start --ssh-agent`. On Linux it uses `$SSH_AUTH_SOCK`. See [docs/configuration.md#ssh](docs/configuration.md#ssh) for the full option list.

@@ -1,63 +1,64 @@
 # Configuration
 
-A Burrow project is configured by `.burrow/config.ts`. The file must default-export a
-`Burrow` instance:
+A Burrow project is configured by `.burrow/config.yaml`. Burrow loads this file
+when you run a task; a global fallback at `~/.config/burrow/config.yaml` is used
+when no project config is present.
 
-```typescript
-import { Burrow, claudeCode, docker } from "burrow";
+```yaml
+agent:
+  provider: claude-code
+  model: claude-opus-4-7
+  permissionMode: acceptEdits
 
-export default new Burrow({ /* … */ });
+sandbox:
+  provider: docker
+  imageName: burrow:local
+
+cwd: ..
 ```
 
-The full constructor signature:
-
-```typescript
-new Burrow({
-  agent,         // AgentProvider — e.g. claudeCode(...)
-  sandbox,       // SandboxProvider — e.g. docker(...)
-  cwd,           // optional — working directory the agent runs in
-  burrowDir,     // optional — override .burrow/ location
-  systemPrompt,  // optional — base system prompt sent to the agent
-  git,           // optional — Git workflow configuration
-});
-```
-
-The rest of this document lists every field accepted by the built-in providers and
-the optional sub-configs.
+Path values (`cwd`, `burrowDir`, `systemPrompt`, `sandbox.mounts[].source`) are
+resolved relative to the directory containing the YAML file, unless absolute.
 
 ## `agent`
 
-```typescript
-claudeCode("claude-opus-4-7", {
-  effort: "high",
-  maxTurns: 50,
-  allowedTools: ["Read", "Edit", "Bash"],
-  permissionMode: "acceptEdits",
-});
+```yaml
+agent:
+  provider: claude-code
+  model: claude-opus-4-7
+  effort: high
+  maxTurns: 50
+  allowedTools: [Read, Edit, Bash]
+  permissionMode: acceptEdits
 ```
 
 | Field            | Type                                                      | Default     | Description                                                                                                              |
 | ---------------- | --------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `model`          | `string` (positional)                                     | —           | Required. Claude model identifier (e.g. `claude-opus-4-7`).                                                              |
+| `provider`       | `"claude-code"`                                           | —           | Required. The only built-in agent provider today.                                                                        |
+| `model`          | `string`                                                  | —           | Required. Claude model identifier (e.g. `claude-opus-4-7`).                                                              |
 | `effort`         | `"low" \| "medium" \| "high" \| "xhigh" \| "max"`         | unset       | Reasoning effort hint passed to the model.                                                                               |
 | `maxTurns`       | `number`                                                  | unset       | Hard cap on agent turns per task. Useful as a fail-safe.                                                                 |
-| `allowedTools`   | `string[]`                                                | unset (all) | Whitelist of tool names the agent may call (e.g. `["Read", "Edit", "Bash"]`).                                            |
+| `allowedTools`   | `string[]`                                                | unset (all) | Whitelist of tool names the agent may call.                                                                              |
 | `permissionMode` | `"default" \| "acceptEdits" \| "bypassPermissions"`       | `"default"` | `acceptEdits` auto-accepts file edits; `bypassPermissions` skips all confirmation prompts.                               |
 
 ## `sandbox`
 
-```typescript
-docker({
-  imageName: "burrow:local",
-  mounts: [{ source: "./data", target: "/home/raccoon/workspace/data" }],
-  env: { DEBUG: true },
-  network: "bridge",
-  ssh: true,
-});
+```yaml
+sandbox:
+  provider: docker
+  imageName: burrow:local
+  mounts:
+    - source: ./data
+      target: /home/raccoon/workspace/data
+  env:
+    DEBUG: "true"
+  network: bridge
+  ssh: true
 ```
 
 | Field       | Type                                              | Default | Description                                                                       |
 | ----------- | ------------------------------------------------- | ------- | --------------------------------------------------------------------------------- |
+| `provider`  | `"docker"`                                        | —       | Required. The only built-in sandbox provider today.                               |
 | `imageName` | `string`                                          | —       | Required. Docker image tag to run (e.g. `burrow:local`).                          |
 | `mounts`    | `Mount[]`                                         | `[]`    | Bind-mounts from host to container. See [Mount](#mount).                          |
 | `env`       | `Record<string, string \| number \| boolean>`     | `{}`    | Environment variables passed to the container. Values are stringified.            |
@@ -66,28 +67,29 @@ docker({
 
 ### Mount
 
-```typescript
-{ source: "./data", target: "/home/raccoon/workspace/data" }
+```yaml
+mounts:
+  - source: ./data
+    target: /home/raccoon/workspace/data
 ```
 
-| Field    | Type     | Description                                                              |
-| -------- | -------- | ------------------------------------------------------------------------ |
-| `source` | `string` | Path on the host. `~/` is expanded. Relative paths resolve against cwd.  |
-| `target` | `string` | Absolute path inside the container.                                      |
+| Field    | Type     | Description                                                                          |
+| -------- | -------- | ------------------------------------------------------------------------------------ |
+| `source` | `string` | Path on the host. `~/` is expanded. Relative paths resolve against the YAML file's dir. |
+| `target` | `string` | Absolute path inside the container.                                                  |
 
 ### Network
 
-A network can be a simple string (Docker network mode) or an object:
+A network can be a simple string (Docker network mode) or a mapping:
 
-```typescript
-network: {
-  mode: "bridge",
-  allowedHosts: [
-    { host: "registry.npmjs.org", ip: "104.16.0.1" },
-    "api.internal:10.0.0.5",
-  ],
-  dns: ["1.1.1.1"],
-}
+```yaml
+network:
+  mode: bridge
+  allowedHosts:
+    - host: registry.npmjs.org
+      ip: 104.16.0.1
+    - "api.internal:10.0.0.5"
+  dns: ["1.1.1.1"]
 ```
 
 | Field          | Type                                | Description                                                                                       |
@@ -102,16 +104,15 @@ Forward the host's SSH agent and known hosts into the container so `git` (and an
 other SSH-based tool) can authenticate against remotes such as GitHub.
 
 `ssh: true` enables the defaults: agent forwarding on, `~/.ssh/known_hosts` mounted
-read-only, `~/.ssh/config` not mounted. Pass an `SshConfig` object to customize:
+read-only, `~/.ssh/config` not mounted. Pass a mapping to customize:
 
-```typescript
-ssh: {
-  agent: true,
-  knownHosts: true,
-  config: false,
-  hostDir: "~/.ssh",
-  containerHome: "/home/raccoon",
-}
+```yaml
+ssh:
+  agent: true
+  knownHosts: true
+  config: false
+  hostDir: ~/.ssh
+  containerHome: /home/raccoon
 ```
 
 | Field           | Type                  | Default            | Description                                                                                                                           |
@@ -148,13 +149,12 @@ you control.
 
 ## `git`
 
-```typescript
-git: {
-  branchPattern: "feature/<slug>",
-  commitStyle: "conventional",
-  commitTemplate: "...",
-  defaultBranch: "main",
-}
+```yaml
+git:
+  branchPattern: feature/<slug>
+  commitStyle: conventional
+  commitTemplate: "..."
+  defaultBranch: main
 ```
 
 When `git` is set, Burrow appends a "Git Workflow" section to the agent's system
@@ -171,27 +171,53 @@ For `gh pr create` to succeed inside the sandbox, the container needs `gh`
 installed (the default Burrow Dockerfile provides it) and an authenticated session.
 The simplest path is to set `GH_TOKEN` via the sandbox `env`:
 
-```typescript
-sandbox: docker({
-  imageName: "burrow:local",
-  ssh: true,
-  env: { GH_TOKEN: process.env.GH_TOKEN ?? "" },
-}),
+```yaml
+sandbox:
+  provider: docker
+  imageName: burrow:local
+  ssh: true
+  env:
+    GH_TOKEN: ${GH_TOKEN}  # only literal strings — substitute via your shell or wrapper
 ```
 
-Alternatively, mount your `~/.config/gh` directory read-only:
+YAML does not natively expand environment variables. If you need dynamic values,
+either generate the file from a template or mount `~/.config/gh` instead:
 
-```typescript
-mounts: [{ source: "~/.config/gh", target: "/home/raccoon/.config/gh" }],
+```yaml
+sandbox:
+  provider: docker
+  imageName: burrow:local
+  mounts:
+    - source: ~/.config/gh
+      target: /home/raccoon/.config/gh
 ```
+
+## `hooks`
+
+Hooks fire on session lifecycle events and run a shell command or external process.
+Each event accepts a single entry or a list. Function callbacks are not expressible
+in YAML — for callback hooks, use the programmatic API.
+
+```yaml
+hooks:
+  SessionStart:
+    - "echo started: $BURROW_PROMPT"
+  SessionEnd:
+    - command: notify-send
+      args: ["burrow", "$BURROW_SUMMARY"]
+```
+
+Valid events: `SessionStart`, `IntentResolved`, `SessionEnd`, `SessionError`.
 
 ## Top-level fields
 
 | Field          | Type              | Description                                                                                                  |
 | -------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
-| `agent`        | `AgentProvider`   | Required. The agent that runs each task.                                                                     |
-| `sandbox`      | `SandboxProvider` | Required. The sandbox the agent runs inside.                                                                 |
-| `cwd`          | `string`          | Working directory passed to the agent. Usually `join(import.meta.dir, "..")` so the agent sees your project. |
+| `agent`        | mapping           | Required. The agent that runs each task. See [`agent`](#agent).                                              |
+| `sandbox`      | mapping           | Required. The sandbox the agent runs inside. See [`sandbox`](#sandbox).                                      |
+| `cwd`          | `string`          | Working directory passed to the agent. Defaults to unset; project configs typically use `..`.                |
 | `burrowDir`    | `string`          | Override the default `<cwd>/.burrow/` location for intents and resources.                                    |
-| `systemPrompt` | `string`          | Base system prompt appended ahead of intent-specific resources.                                              |
-| `git`          | `GitConfig`       | See [`git`](#git).                                                                                           |
+| `systemPrompt` | `string \| false` | Path to a base system prompt file. Defaults to `system-prompt.md` next to the YAML if it exists; `false` disables. |
+| `git`          | mapping           | See [`git`](#git).                                                                                           |
+| `watch`        | `boolean`         | When `true`, every task runs in watch mode (equivalent to passing `--watch`).                                |
+| `hooks`        | mapping           | See [`hooks`](#hooks).                                                                                       |

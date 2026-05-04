@@ -2,13 +2,16 @@
 import path from "path";
 import os from "os";
 import { spawnSync } from "child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import chalk from "chalk";
 import { runDoctorCli, runInitCli, runSetupCli } from "./init.js";
 import { runInstallCli, runUninstallCli, runBundlesCli } from "./install.js";
 import { userBurrowDir } from "./intents.js";
-import { Intent } from "./burrow.js";
+import { Burrow, Intent } from "./burrow.js";
+import { loadBurrow } from "./config.js";
 import { watchInstructions } from "./watch.js";
+
+const CONFIG_FILENAME = "config.yaml";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -251,66 +254,44 @@ async function main(): Promise<void> {
     }
   }
 
-  const projectConfigPath = path.join(process.cwd(), ".burrow", "config.ts");
-  const globalConfigPath = path.join(userBurrowDir(), "config.ts");
+  const projectConfigPath = path.join(process.cwd(), ".burrow", CONFIG_FILENAME);
+  const globalConfigPath = path.join(userBurrowDir(), CONFIG_FILENAME);
 
-  let mod: { default: unknown };
-  try {
-    mod = await import(projectConfigPath);
-  } catch {
-    try {
-      mod = await import(globalConfigPath);
-    } catch {
-      console.error(`No config found. Tried:\n  ${projectConfigPath}\n  ${globalConfigPath}`);
-      console.error('Run "burrow init" for a project config or "burrow setup" for a global one.');
-      process.exit(1);
-    }
-  }
+  const configPath = existsSync(projectConfigPath)
+    ? projectConfigPath
+    : existsSync(globalConfigPath)
+      ? globalConfigPath
+      : null;
 
-  const burrow = mod.default;
-  if (!burrow || typeof (burrow as Record<string, unknown>).intent !== "function") {
-    console.error(".burrow/config.ts must export a Burrow instance as default");
+  if (!configPath) {
+    console.error(`No config found. Tried:\n  ${projectConfigPath}\n  ${globalConfigPath}`);
+    console.error('Run "burrow init" for a project config or "burrow setup" for a global one.');
     process.exit(1);
   }
 
-  const b = burrow as {
-    intent: (p: string) => unknown;
-    task: (i: unknown) => { run: () => AsyncIterable<unknown> };
-    watch?: boolean;
-  };
+  let b: Burrow;
+  try {
+    b = loadBurrow(configPath);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 
   const shouldWatch = hasWatchFlag || b.watch === true;
 
   type Scope = "project" | "user" | "installed" | "builtin";
-  type ResolvedIntent = {
-    prompt: string;
-    inferred: {
-      agent: { name: string; model?: string; permissionMode?: string; allowedTools?: readonly string[]; maxTurns?: number };
-      sandbox: { name: string; image?: string; network?: string; mounts?: number; envVars?: number; ssh?: boolean };
-      cwd?: string;
-      systemPrompt: boolean;
-      systemPromptLines?: number;
-      git?: { branchPattern?: string; commitStyle?: string; defaultBranch?: string };
-      intent?: { name: string; type: string; description?: string; scope?: Scope };
-      agents: Array<{ name: string; scope?: Scope }>;
-      skills: Array<{ name: string; scope?: Scope }>;
-      context: Array<{ name: string; scope?: Scope }>;
-      docs: Array<{ name: string; scope?: Scope }>;
-    };
-    resolved: unknown;
-  };
 
-  const baseIntent = b.intent(prompt) as ResolvedIntent;
+  const baseIntent = b.intent(prompt);
   // When --watch is set and the project has a git workflow, append the watch
   // instructions to the agent prompt so the entire watch loop runs inside one
   // session — no external polling.
-  const intent: ResolvedIntent =
+  const intent: Intent =
     shouldWatch && baseIntent.inferred.git
-      ? (new Intent(
+      ? new Intent(
           `${baseIntent.prompt}\n\n${watchInstructions()}`,
-          baseIntent.inferred as never,
-          baseIntent.resolved as never
-        ) as unknown as ResolvedIntent)
+          baseIntent.inferred,
+          baseIntent.resolved
+        )
       : baseIntent;
 
   const scopeMark: Record<Scope, string> = {

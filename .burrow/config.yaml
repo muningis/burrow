@@ -1,0 +1,15 @@
+agent:
+  provider: claude-code
+  model: claude-opus-4-7
+  permissionMode: bypassPermissions
+
+sandbox:
+  provider: docker
+  imageName: burrow:local
+  ssh: true
+
+cwd: ..
+
+git:
+  branchPattern: feature/<slug>
+  commitStyle: conventional

@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-.burrow/config.ts        →  new Burrow({ agent, sandbox, cwd, systemPrompt })
+.burrow/config.yaml      →  loadBurrow() → new Burrow({ agent, sandbox, cwd, systemPrompt })
                                   │
                                   ▼
                          Burrow.intent(prompt)
@@ -22,6 +22,7 @@
 Key files:
 
 - `src/burrow.ts` — `Burrow`, `Intent`, `Task`.
+- `src/config.ts` — YAML config loader (`loadBurrow`, `loadBurrowConfig`).
 - `src/intents.ts` — intent discovery, picker, resource loading, prompt composition.
 - `src/agents/claude-code.ts` — Claude Code agent provider.
 - `src/sandbox/docker.ts` — Docker sandbox provider.

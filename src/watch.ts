@@ -75,7 +75,7 @@ while true; do
     break
   fi
   if [ -z "$unresolved" ] && [ "$decision" = "APPROVED" ]; then
-    echo "READY decision=$decision"
+    echo "READY"
   fi
   printf '%s\\n' "$unresolved" > "$STATE_FILE"
   prev="$unresolved"

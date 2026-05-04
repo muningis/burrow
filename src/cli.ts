@@ -7,8 +7,8 @@ import chalk from "chalk";
 import { runDoctorCli, runInitCli, runSetupCli } from "./init.js";
 import { runInstallCli, runUninstallCli, runBundlesCli } from "./install.js";
 import { userBurrowDir } from "./intents.js";
-import type { Burrow } from "./burrow.js";
-import { watchPr } from "./watch.js";
+import { Intent } from "./burrow.js";
+import { watchInstructions } from "./watch.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -127,7 +127,8 @@ function printUsage(): void {
   console.error(`Usage:
   burrow "<prompt>"        Run a task in the configured sandbox
   burrow query             Compose a multi-line prompt in $EDITOR (or read from stdin)
-  burrow --watch           After task completes, watch the created PR for new review comments and auto-fix them
+  burrow "<prompt>" --watch
+                           Stay in the same agent session after the initial task and watch the PR for new review comments, auto-fix them, and merge when approved
   burrow init [dir]        Scaffold or update .burrow/ in the current (or given) directory (use --force to overwrite)
   burrow setup             Scaffold or update ~/.config/burrow/ (use --force to overwrite)
   burrow doctor            Check for updates to ~/.config/burrow/ (--local for .burrow/, --minimal for yes/no)
@@ -281,7 +282,7 @@ async function main(): Promise<void> {
   const shouldWatch = hasWatchFlag || b.watch === true;
 
   type Scope = "project" | "user" | "installed" | "builtin";
-  const intent = b.intent(prompt) as {
+  type ResolvedIntent = {
     prompt: string;
     inferred: {
       agent: { name: string; model?: string; permissionMode?: string; allowedTools?: readonly string[]; maxTurns?: number };
@@ -296,7 +297,21 @@ async function main(): Promise<void> {
       context: Array<{ name: string; scope?: Scope }>;
       docs: Array<{ name: string; scope?: Scope }>;
     };
+    resolved: unknown;
   };
+
+  const baseIntent = b.intent(prompt) as ResolvedIntent;
+  // When --watch is set and the project has a git workflow, append the watch
+  // instructions to the agent prompt so the entire watch loop runs inside one
+  // session — no external polling.
+  const intent: ResolvedIntent =
+    shouldWatch && baseIntent.inferred.git
+      ? (new Intent(
+          `${baseIntent.prompt}\n\n${watchInstructions()}`,
+          baseIntent.inferred as never,
+          baseIntent.resolved as never
+        ) as unknown as ResolvedIntent)
+      : baseIntent;
 
   const scopeMark: Record<Scope, string> = {
     project: "",
@@ -357,7 +372,6 @@ async function main(): Promise<void> {
   process.stderr.write(`${sep}\n`);
   process.stderr.write(`${bold(cyan("● Work"))}\n`);
 
-  const cwd = intent.inferred.cwd ?? process.cwd();
   const spinner = createSpinner("thinking…");
 
   for await (const message of b.task(intent).run()) {
@@ -387,32 +401,6 @@ async function main(): Promise<void> {
       const cost = msg.total_cost_usd != null ? dim(` ($${msg.total_cost_usd.toFixed(4)})`) : "";
       if (msg.subtype === "success") {
         process.stderr.write(`${green("✓")} ${bold("Done")}${cost}\n`);
-        if (shouldWatch && intent.inferred.git) {
-          try {
-            await watchPr(b as unknown as Burrow, cwd, (watchMsg) => {
-              const wm = watchMsg as typeof msg;
-              if (wm.type === "assistant" && wm.message?.content) {
-                for (const block of wm.message.content) {
-                  if (block.type === "tool_use" && block.name) {
-                    const detail = formatTool(block.name, (block.input ?? {}) as Record<string, unknown>);
-                    const cat = toolCategory[block.name] ?? "other";
-                    const head = categoryColor[cat](`${categoryIcon[cat]} ${block.name}`);
-                    process.stderr.write(`  ${detail ? `${head}  ${dim(detail)}` : head}\n`);
-                  }
-                }
-              } else if (wm.type === "result") {
-                const wcost = wm.total_cost_usd != null ? dim(` ($${wm.total_cost_usd.toFixed(4)})`) : "";
-                if (wm.subtype === "success") {
-                  process.stderr.write(`${green("✓")} ${bold("Done")}${wcost}\n`);
-                } else {
-                  process.stderr.write(`${red("✗")} ${bold(`Failed: ${wm.subtype}`)}${wcost}\n`);
-                }
-              }
-            });
-          } catch (err) {
-            process.stderr.write(`${yellow("!")} ${bold("Watch failed")}: ${err instanceof Error ? err.message : String(err)}\n`);
-          }
-        }
       } else {
         process.stderr.write(`${red("✗")} ${bold(`Failed: ${msg.subtype}`)}${cost}\n`);
         process.exit(1);

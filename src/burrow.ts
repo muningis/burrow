@@ -233,7 +233,9 @@ export class Task {
       throw err;
     }
 
+    let runFailed = false;
     let runError: unknown;
+    let stopFailed = false;
     let stopError: unknown;
     let completed = false;
     try {
@@ -270,6 +272,7 @@ export class Task {
       }
       completed = true;
     } catch (err) {
+      runFailed = true;
       runError = err;
       await fireHook(
         hooks,
@@ -280,6 +283,7 @@ export class Task {
       try {
         await this.config.sandbox.stop();
       } catch (err) {
+        stopFailed = true;
         stopError = err;
         await fireHook(
           hooks,
@@ -289,8 +293,8 @@ export class Task {
       }
     }
 
-    const hasTerminalError = runError !== undefined || stopError !== undefined;
-    const terminalError = runError !== undefined ? runError : stopError;
+    const hasTerminalError = runFailed || stopFailed;
+    const terminalError = runFailed ? runError : stopError;
     const status: "success" | "error" = hasTerminalError
       ? "error"
       : resultSubtype && resultSubtype !== "success"

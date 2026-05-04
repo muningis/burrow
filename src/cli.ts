@@ -7,7 +7,7 @@ import chalk from "chalk";
 import { runDoctorCli, runInitCli, runSetupCli } from "./init.js";
 import { runInstallCli, runUninstallCli, runBundlesCli } from "./install.js";
 import { userBurrowDir } from "./intents.js";
-import { Intent } from "./burrow.js";
+import { Burrow, Intent } from "./burrow.js";
 import { loadBurrow } from "./config.js";
 import { watchInstructions } from "./watch.js";
 
@@ -269,13 +269,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  let b: {
-    intent: (p: string) => unknown;
-    task: (i: unknown) => { run: () => AsyncIterable<unknown> };
-    watch?: boolean;
-  };
+  let b: Burrow;
   try {
-    b = loadBurrow(configPath) as typeof b;
+    b = loadBurrow(configPath);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -284,35 +280,18 @@ async function main(): Promise<void> {
   const shouldWatch = hasWatchFlag || b.watch === true;
 
   type Scope = "project" | "user" | "installed" | "builtin";
-  type ResolvedIntent = {
-    prompt: string;
-    inferred: {
-      agent: { name: string; model?: string; permissionMode?: string; allowedTools?: readonly string[]; maxTurns?: number };
-      sandbox: { name: string; image?: string; network?: string; mounts?: number; envVars?: number; ssh?: boolean };
-      cwd?: string;
-      systemPrompt: boolean;
-      systemPromptLines?: number;
-      git?: { branchPattern?: string; commitStyle?: string; defaultBranch?: string };
-      intent?: { name: string; type: string; description?: string; scope?: Scope };
-      agents: Array<{ name: string; scope?: Scope }>;
-      skills: Array<{ name: string; scope?: Scope }>;
-      context: Array<{ name: string; scope?: Scope }>;
-      docs: Array<{ name: string; scope?: Scope }>;
-    };
-    resolved: unknown;
-  };
 
-  const baseIntent = b.intent(prompt) as ResolvedIntent;
+  const baseIntent = b.intent(prompt);
   // When --watch is set and the project has a git workflow, append the watch
   // instructions to the agent prompt so the entire watch loop runs inside one
   // session — no external polling.
-  const intent: ResolvedIntent =
+  const intent: Intent =
     shouldWatch && baseIntent.inferred.git
-      ? (new Intent(
+      ? new Intent(
           `${baseIntent.prompt}\n\n${watchInstructions()}`,
-          baseIntent.inferred as never,
-          baseIntent.resolved as never
-        ) as unknown as ResolvedIntent)
+          baseIntent.inferred,
+          baseIntent.resolved
+        )
       : baseIntent;
 
   const scopeMark: Record<Scope, string> = {

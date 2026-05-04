@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "fs";
+import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
 import { parse as parseYaml } from "yaml";
 import { Burrow, type BurrowConfig, type GitConfig } from "./burrow.js";
@@ -27,12 +28,12 @@ interface YamlSandbox {
 interface YamlConfig {
   agent?: YamlAgent;
   sandbox?: YamlSandbox;
-  cwd?: string;
-  burrowDir?: string;
+  cwd?: unknown;
+  burrowDir?: unknown;
   systemPrompt?: string | false | null;
   git?: GitConfig;
   watch?: boolean;
-  hooks?: Record<string, unknown>;
+  hooks?: unknown;
 }
 
 const HOOK_EVENTS: readonly HookEventName[] = [
@@ -46,8 +47,15 @@ function fail(msg: string, file?: string): never {
   throw new Error(`Burrow config: ${msg}${file ? ` (in ${file})` : ""}`);
 }
 
+function expandHome(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/")) return resolve(homedir(), p.slice(2));
+  return p;
+}
+
 function resolvePath(p: string, baseDir: string): string {
-  return isAbsolute(p) ? p : resolve(baseDir, p);
+  const expanded = expandHome(p);
+  return isAbsolute(expanded) ? expanded : resolve(baseDir, expanded);
 }
 
 function loadAgent(spec: YamlAgent | undefined, file: string): AgentProvider {
@@ -76,6 +84,9 @@ function loadSandbox(
   if (typeof cfg.imageName !== "string" || !cfg.imageName) {
     fail("sandbox.imageName must be a non-empty string", file);
   }
+  if (mounts !== undefined && !Array.isArray(mounts)) {
+    fail("sandbox.mounts must be an array", file);
+  }
   if (Array.isArray(mounts)) {
     cfg.mounts = mounts.map((m) => {
       const entry = m as { source?: unknown; target?: unknown };
@@ -98,18 +109,28 @@ function loadHookEntry(entry: unknown, event: string, file: string): Hook<HookPa
     if (typeof obj.command !== "string" || !obj.command) {
       fail(`hooks.${event}: entry 'command' must be a non-empty string`, file);
     }
+    if (
+      obj.args !== undefined &&
+      (!Array.isArray(obj.args) || obj.args.some((a) => typeof a !== "string"))
+    ) {
+      fail(`hooks.${event}: entry 'args' must be an array of strings`, file);
+    }
+    if (obj.cwd !== undefined && typeof obj.cwd !== "string") {
+      fail(`hooks.${event}: entry 'cwd' must be a string`, file);
+    }
     return obj;
   }
   fail(`hooks.${event}: entries must be a shell string or { command, args?, cwd? }`, file);
 }
 
-function loadHooks(
-  raw: Record<string, unknown> | undefined,
-  file: string
-): HooksConfig | undefined {
-  if (!raw) return undefined;
+function loadHooks(raw: unknown, file: string): HooksConfig | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    fail("hooks must be a mapping", file);
+  }
+  const hooks = raw as Record<string, unknown>;
   const out: Record<string, Hook<HookPayload>[]> = {};
-  for (const [event, value] of Object.entries(raw)) {
+  for (const [event, value] of Object.entries(hooks)) {
     if (!HOOK_EVENTS.includes(event as HookEventName)) {
       fail(
         `hooks.${event}: unknown event (expected one of ${HOOK_EVENTS.join(", ")})`,
@@ -140,6 +161,12 @@ export function loadBurrowConfig(file: string): BurrowConfig {
   const agent = loadAgent(data.agent, file);
   const sandbox = loadSandbox(data.sandbox, file, baseDir);
 
+  if (data.cwd != null && typeof data.cwd !== "string") {
+    fail("cwd must be a string", file);
+  }
+  if (data.burrowDir != null && typeof data.burrowDir !== "string") {
+    fail("burrowDir must be a string", file);
+  }
   const cwd = data.cwd != null ? resolvePath(data.cwd, baseDir) : undefined;
   const burrowDir =
     data.burrowDir != null ? resolvePath(data.burrowDir, baseDir) : undefined;

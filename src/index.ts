@@ -22,6 +22,7 @@ export {
 } from "./intents.js";
 export { installBundle, listBundles, uninstallBundle } from "./install.js";
 export type { InstalledBundle } from "./install.js";
+export { loadBurrow, loadBurrowConfig } from "./config.js";
 
 export { claudeCode, ClaudeCodeAgentProvider } from "./agents/claude-code.js";
 export type { ClaudeCodeOptions } from "./agents/claude-code.js";

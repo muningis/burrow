@@ -4,38 +4,29 @@ import { join, resolve } from "path";
 import chalk from "chalk";
 import { userBurrowDir } from "./intents.js";
 
-const CONFIG_TS = `import { readFileSync } from "fs";
-import { join } from "path";
-import { Burrow, claudeCode, docker } from "burrow";
+const CONFIG_YAML = `agent:
+  provider: claude-code
+  model: claude-opus-4-7
+  permissionMode: acceptEdits
 
-const systemPrompt = readFileSync(
-  join(import.meta.dir, "system-prompt.md"),
-  "utf-8"
-);
+sandbox:
+  provider: docker
+  imageName: burrow:local
 
-export default new Burrow({
-  agent: claudeCode("claude-opus-4-7", { permissionMode: "acceptEdits" }),
-  sandbox: docker({ imageName: "burrow:local" }),
-  cwd: join(import.meta.dir, ".."),
-  systemPrompt,
-});
+cwd: ..
+
+# systemPrompt defaults to ./system-prompt.md if it exists.
+# Set systemPrompt: false to disable, or pass a path to use a different file.
 `;
 
-const GLOBAL_CONFIG_TS = `import { readFileSync } from "fs";
-import { join } from "path";
-import { Burrow, claudeCode, docker } from "burrow";
+const GLOBAL_CONFIG_YAML = `agent:
+  provider: claude-code
+  model: claude-opus-4-7
+  permissionMode: acceptEdits
 
-const systemPrompt = readFileSync(
-  join(import.meta.dir, "system-prompt.md"),
-  "utf-8"
-);
-
-export default new Burrow({
-  agent: claudeCode("claude-opus-4-7", { permissionMode: "acceptEdits" }),
-  sandbox: docker({ imageName: "burrow:local" }),
-  // no cwd — uses the directory where burrow is invoked
-  systemPrompt,
-});
+sandbox:
+  provider: docker
+  imageName: burrow:local
 `;
 
 const SYSTEM_PROMPT_MD = `You are an expert developer working on this project.
@@ -128,7 +119,7 @@ function projectScaffold(cwd: string): Scaffold {
     label: ".burrow",
     subdirs: SUBDIRS,
     files: [
-      { rel: "config.ts", content: CONFIG_TS },
+      { rel: "config.yaml", content: CONFIG_YAML },
       { rel: "system-prompt.md", content: SYSTEM_PROMPT_MD },
       { rel: "memory.md", content: MEMORY_MD },
       { rel: "intents/code-write.md", content: SAMPLE_INTENT_MD },
@@ -146,7 +137,7 @@ function globalScaffold(): Scaffold {
     label: "~/.config/burrow",
     subdirs: SUBDIRS,
     files: [
-      { rel: "config.ts", content: GLOBAL_CONFIG_TS },
+      { rel: "config.yaml", content: GLOBAL_CONFIG_YAML },
       { rel: "system-prompt.md", content: GLOBAL_SYSTEM_PROMPT_MD },
       { rel: "memory.md", content: GLOBAL_MEMORY_MD },
     ],
@@ -414,7 +405,7 @@ export function runSetupCli(args: string[] = []): void {
     console.log();
     console.log(chalk.bold("Next steps:"));
     console.log(`  1. Edit ${chalk.cyan("~/.config/burrow/system-prompt.md")} for your personal conventions.`);
-    console.log(`  2. Edit ${chalk.cyan("~/.config/burrow/config.ts")} to set your preferred model and sandbox.`);
+    console.log(`  2. Edit ${chalk.cyan("~/.config/burrow/config.yaml")} to set your preferred model and sandbox.`);
     console.log(`  3. Add global intents to ${chalk.cyan("~/.config/burrow/intents/")}.`);
     console.log(`  4. Run anywhere: ${chalk.cyan('burrow "<prompt>"')}`);
   }

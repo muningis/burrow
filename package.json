@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
-    "chalk": "^5.6.2"
+    "chalk": "^5.6.2",
+    "yaml": "^2.8.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

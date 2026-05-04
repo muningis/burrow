@@ -9,6 +9,7 @@ import {
   type IntentScopeKind,
   type ResolvedIntent,
 } from "./intents.js";
+import { fireHook, type HooksConfig } from "./hooks.js";
 
 export type CommitStyle = "conventional" | "custom";
 
@@ -25,7 +26,7 @@ export interface BurrowConfig {
   cwd?: string;
   burrowDir?: string;
   systemPrompt?: string;
-  hooks?: Record<string, unknown>;
+  hooks?: HooksConfig;
   git?: GitConfig;
   watch?: boolean;
 }
@@ -174,16 +175,155 @@ export class Task {
       }
     }
 
-    const ctx = await this.config.sandbox.start();
+    const hooks = this.config.hooks;
+    const cwd = this.config.cwd;
+    const prompt = this.intent.prompt;
+    const resolved = this.intent.resolved;
+
+    await fireHook(hooks, { event: "SessionStart", prompt, cwd }, cwd);
+    await fireHook(
+      hooks,
+      {
+        event: "IntentResolved",
+        prompt,
+        cwd,
+        intent: resolved
+          ? {
+              name: resolved.name,
+              type: resolved.type,
+              description: resolved.description,
+              scope: resolved.scope,
+            }
+          : null,
+        agents: (resolved?.agents ?? []).map((r) => r.name),
+        skills: (resolved?.skills ?? []).map((r) => r.name),
+        context: (resolved?.context ?? []).map((r) => r.name),
+        docs: (resolved?.docs ?? []).map((r) => r.name),
+      },
+      cwd
+    );
+
+    let resultSubtype: string | undefined;
+    let resultCost: number | undefined;
+    let finalMessage: string | undefined;
+
+    const errorMessage = (err: unknown): string =>
+      err instanceof Error ? err.message : String(err);
+
+    let ctx;
     try {
-      yield* this.config.agent.run(this.intent.prompt, {
-        cwd: this.config.cwd,
+      ctx = await this.config.sandbox.start();
+    } catch (err) {
+      await fireHook(
+        hooks,
+        { event: "SessionError", prompt, cwd, error: errorMessage(err) },
+        cwd
+      );
+      await fireHook(
+        hooks,
+        {
+          event: "SessionEnd",
+          prompt,
+          cwd,
+          status: "error",
+          summary: `Failed: sandbox start (${errorMessage(err)})`,
+        },
+        cwd
+      );
+      throw err;
+    }
+
+    let runFailed = false;
+    let runError: unknown;
+    let stopFailed = false;
+    let stopError: unknown;
+    let completed = false;
+    try {
+      for await (const message of this.config.agent.run(prompt, {
+        cwd,
         systemPrompt,
         env: ctx.env,
-      });
+      })) {
+        if (message && typeof message === "object") {
+          const m = message as {
+            type?: string;
+            subtype?: string;
+            total_cost_usd?: number;
+            message?: { content?: unknown };
+          };
+          if (m.type === "result") {
+            resultSubtype = m.subtype;
+            resultCost = m.total_cost_usd;
+          } else if (m.type === "assistant" && Array.isArray(m.message?.content)) {
+            for (const block of m.message.content) {
+              if (
+                block &&
+                typeof block === "object" &&
+                (block as { type?: unknown }).type === "text" &&
+                typeof (block as { text?: unknown }).text === "string" &&
+                (block as { text: string }).text.trim()
+              ) {
+                finalMessage = (block as { text: string }).text;
+              }
+            }
+          }
+        }
+        yield message;
+      }
+      completed = true;
+    } catch (err) {
+      runFailed = true;
+      runError = err;
+      await fireHook(
+        hooks,
+        { event: "SessionError", prompt, cwd, error: errorMessage(err) },
+        cwd
+      );
     } finally {
-      await this.config.sandbox.stop();
+      try {
+        await this.config.sandbox.stop();
+      } catch (err) {
+        stopFailed = true;
+        stopError = err;
+        await fireHook(
+          hooks,
+          { event: "SessionError", prompt, cwd, error: errorMessage(err) },
+          cwd
+        );
+      }
     }
+
+    const hasTerminalError = runFailed || stopFailed;
+    const terminalError = runFailed ? runError : stopError;
+    const status: "success" | "error" = hasTerminalError
+      ? "error"
+      : resultSubtype && resultSubtype !== "success"
+        ? "error"
+        : completed
+          ? "success"
+          : "error";
+    const summary =
+      status === "success"
+        ? "Completed"
+        : hasTerminalError
+          ? `Failed: ${errorMessage(terminalError)}`
+          : `Failed: ${resultSubtype ?? "unknown"}`;
+    await fireHook(
+      hooks,
+      {
+        event: "SessionEnd",
+        prompt,
+        cwd,
+        status,
+        summary,
+        subtype: resultSubtype,
+        cost: resultCost,
+        finalMessage,
+      },
+      cwd
+    );
+
+    if (hasTerminalError) throw terminalError;
   }
 }
 

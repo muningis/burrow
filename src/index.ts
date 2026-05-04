@@ -31,6 +31,19 @@ export type { DockerSandboxConfig } from "./sandbox/docker.js";
 
 export type { AgentProvider, AgentRunOptions, AgentSummary } from "./agents/agent.js";
 export type {
+  Hook,
+  HookCallback,
+  HookCommand,
+  HookEventName,
+  HookPayload,
+  HookPayloadBase,
+  HooksConfig,
+  IntentResolvedPayload,
+  SessionEndPayload,
+  SessionErrorPayload,
+  SessionStartPayload,
+} from "./hooks.js";
+export type {
   SandboxProvider,
   SandboxSummary,
   SandboxContext,
